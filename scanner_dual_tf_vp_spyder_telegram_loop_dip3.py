@@ -54,7 +54,7 @@ TELEGRAM_PING_ON_START = os.getenv("TELEGRAM_PING_ON_START", "false").lower() ==
 TELEGRAM_PING_ON_END   = os.getenv("TELEGRAM_PING_ON_END", "false").lower() == "true"
 
 # --------------------------- Scanner Config --------------------------- #
-RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","google","msft","klac","ibm","tem","aapl","tqqq","bulz","cost","tsla","meta","now","nflx"]
+RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","google","msft","klac","ibm","tem","aapl","tqqq","bulz","cost","tsla","meta","now","nflx","hims","ntra","ddog","tsm","mu","crm","tsm"]
 TICKER_MAP = {"google":"GOOGL"}
 
 # Allow override via env TICKERS (comma/space separated)
@@ -535,33 +535,62 @@ def _compute_dips(df):
     return dips
 
 def _send_dip_alerts(dips_df):
+    # If literally nothing is in dip now, stay quiet to avoid spam.
     if dips_df.empty:
         return
+
     seen = load_seen()
-    new_rows, ongoing_rows = [], []
+    old_rows = []   # previously alerted & still dipping
+    new_rows = []   # first time seen this run/day
+
+    # Classify rows as old/new using the de-dup state
     for _, r in dips_df.iterrows():
-        key = "DIP|" + buy_key(r)
-        (ongoing_rows if key in seen else new_rows).append(r)
-        if key not in seen:
+        key = "DIP|" + buy_key(r)  # e.g., DIP|AAPL|1D|2025-10-14
+        if key in seen:
+            old_rows.append(r)
+        else:
+            new_rows.append(r)
             seen.add(key)
 
-    lines = [f"Dip status {datetime.now().strftime('%Y-%m-%d %H:%M')}:"]
-
+    # Nicely formatted line for each row
     def _fmt(row):
+        close    = row.get("close",    float("nan"))
+        sug_buy  = row.get("sug_buy",  float("nan"))
+        sug_stop = row.get("sug_stop", float("nan"))
         return (f"- {row['ticker']} [{row['tf']}] "
-                f"close {row['close']} ≤ sug_buy {row['sug_buy']} "
-                f"(stop {row['sug_stop']})")
+                f"close {close:.2f} ≤ sug_buy {sug_buy:.2f} "
+                f"(stop {sug_stop:.2f})")
+
+    # Build the message with two always-present sections
+    lines = [f"Stock status {datetime.now().strftime('%Y-%m-%d %H:%M')}:",
+             "",
+             "Still below sug_buy (previously alerted):",
+             "======="]
+
+    if old_rows:
+        # sort for stable output
+        for r in sorted(old_rows, key=lambda x: (x['tf'], x['ticker'])):
+            lines.append(_fmt(r))
+    else:
+        lines.append("— none —")
+
+    lines += ["",
+              "New",
+              "======="]
 
     if new_rows:
-        lines += ["", "NEW dip tags:"]
-        for r in new_rows: lines.append(_fmt(r))
-    if ongoing_rows:
-        lines += ["", "Still below sug_buy (previously alerted):"]
-        for r in ongoing_rows: lines.append(_fmt(r))
+        for r in sorted(new_rows, key=lambda x: (x['tf'], x['ticker'])):
+            lines.append(_fmt(r))
+    else:
+        lines.append("— none —")
 
-    if len(lines) > 1:
-        notify_all_channels("\n".join(lines))
+    # Send the message
+    notify_all_channels("\n".join(lines))
+
+    # Persist only when something new appeared
+    if new_rows:
         save_seen(seen)
+
 
 def run_once(first_run=False):
     if IDE_PRINT_TITLE and first_run:
@@ -644,3 +673,4 @@ if __name__ == "__main__":
         print("[done] Market closed — no scanning (set MARKET_ONLY=false or use the workflow toggle).", flush=True)
         sys.exit(0)
     main_loop()
+
