@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-scanner_dual_tf_vp_spyder_telegram_loop.py  (stable + column reorder)
+scanner_dual_tf_vp_spyder_telegram_loop_dip3.py
 
 - 1D/4H toggles + dual-timeframe gating
-- Dip alerts (optional)
-- Telegram/Discord webhook (optional)
-- Safer indicator handling (no blanket dropna)
-- Robust guards against empty/short frames
-- CSV columns reordered to your custom layout
+- Dip alerts + BUY alerts (de-duped)
+- Telegram alerts (multi-recipient) + optional test pings
+- Market-hours gate (US/Eastern) – overridable by env MARKET_ONLY=false
+- CSV + JSON state artifacts
 """
 
 from __future__ import annotations
-import os, sys, json, time
+import os, sys, json, time, re
 from dataclasses import dataclass
 from typing import List, Optional, Set
 from datetime import datetime, time as dtime, timezone
@@ -24,6 +23,7 @@ import yfinance as yf
 import requests
 import certifi
 import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ===================== CONFIG ===================== #
 IDE_ENABLE_1D = True
@@ -32,28 +32,37 @@ IDE_SORT_TF_FIRST = "1D"
 IDE_PRINT_TITLE = True
 
 IDE_LOOP = False
-IDE_INTERVAL_MIN = 15
+IDE_INTERVAL_MIN = 30  # if IDE_LOOP=True
 
-MARKET_ONLY = False
+# Market-hours gate (default true; workflow can override via env)
+MARKET_ONLY = os.getenv("MARKET_ONLY", "true").lower() == "true"
 MARKET_TZ = "America/New_York"
 MARKET_START = dtime(9, 30)
 MARKET_END   = dtime(16, 0)
 
-IDE_SEND_TEST_MESSAGE_ONCE = False  #Make this True to test the code and make sure is working
+IDE_SEND_TEST_MESSAGE_ONCE = False  # in-IDE only
 
-# --- Secrets / webhooks (optional) --- #
-MANUAL_TELEGRAM_BOT_TOKEN = "8278024097:AAGSt_Xs-sbC9xBLEL7uWX52H5h0YjDF1LA"
-MANUAL_TELEGRAM_CHAT_ID   = ""
-TELEGRAM_AUTO_DISCOVER    = True
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+# --- Telegram / webhooks (use secrets; no hard-coded tokens) --- #
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_CHAT_IDS  = os.getenv("TELEGRAM_CHAT_IDS", "").strip()  # multi: "-480...,11122..." or "-480... 11122..."
+TELEGRAM_AUTO_DISCOVER = True
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "") or MANUAL_TELEGRAM_BOT_TOKEN
-TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "") or MANUAL_TELEGRAM_CHAT_ID
+ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "false").lower() == "true"
+TELEGRAM_PING_ON_START = os.getenv("TELEGRAM_PING_ON_START", "false").lower() == "true"
+TELEGRAM_PING_ON_END   = os.getenv("TELEGRAM_PING_ON_END", "false").lower() == "true"
 
 # --------------------------- Scanner Config --------------------------- #
 RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","google","msft","klac","ibm","tem","aapl","tqqq","bulz","cost","tsla","meta","now","nflx"]
 TICKER_MAP = {"google":"GOOGL"}
-TICKERS = sorted({TICKER_MAP.get(t.lower(), t.upper()) for t in RAW_TICKERS})
+
+# Allow override via env TICKERS (comma/space separated)
+_env_tickers = (os.getenv("TICKERS", "") or "").strip()
+if _env_tickers:
+    TICKERS = sorted({t.upper() for t in re.split(r"[,\s]+", _env_tickers) if t.strip()})
+else:
+    TICKERS = sorted({TICKER_MAP.get(t.lower(), t.upper()) for t in RAW_TICKERS})
 
 DAILY_PERIOD="2y"; DAILY_INTERVAL="1d"
 INTRA_PERIOD="60d"; INTRA_INTERVAL="60m"
@@ -135,16 +144,7 @@ def atr(h, l, c, length=14):
     return true_range(h, l, c).ewm(alpha=1/length, adjust=False).mean()
 
 def aroon_up_down(h, l, length=14):
-    h=_squeeze_col(h); l=_squeeze_col(l)
-    def periods_since_extreme(s: pd.Series, use_max=True):
-        n = len(s); out = np.full(n, np.nan); vals = s.values
-        for i in range(length-1, n):
-            w = vals[i-length+1:i+1]; c = vals[i]
-            if np.isfinite(c):
-                if c == np.nanmax(w): pass
-            out[i] = 0
-        return pd.Series(out, index=s.index)
-    # simpler robust impl:
+    # simple robust impl:
     hh = h.rolling(length).max(); ll = l.rolling(length).min()
     up  = 100 * (h.rolling(length).apply(lambda x: (length-1)-np.argmax(x[::-1]), raw=True)) / length
     dn  = 100 * (l.rolling(length).apply(lambda x: (length-1)-np.argmin(x[::-1]), raw=True)) / length
@@ -158,7 +158,7 @@ def adx(h, l, c, length=14):
     tr = true_range(h, l, c)
     atr_ = tr.ewm(alpha=1/length, adjust=False).mean()
     plus_di  = 100 * pd.Series(plus_dm, index=h.index).ewm(alpha=1/length, adjust=False).mean() / atr_
-    minus_di = 100 * pd.Series(minus_dm, index=h.index).ewm(alpha=1/length, adjust=False).mean() / atr_
+    minus_di = 100 * pd.Series(minus_dm, index=l.index).ewm(alpha=1/length, adjust=False).mean() / atr_
     dx = (100 * (plus_di - minus_di).abs() / (plus_di + minus_di)).replace([np.inf,-np.inf], np.nan)
     return dx.ewm(alpha=1/length, adjust=False).mean()
 
@@ -294,7 +294,6 @@ def divergence_score(df: pd.DataFrame, lb: int, rb: int):
 
 # ------------------------- Strategy rules ---------------------- #
 def long_signal(df: pd.DataFrame, require_div=True):
-    # keep only rows where these exist (no blanket dropna)
     needed = ["EMA50","EMA200","WILLR","ADX","ATR14","Close","High","Low","Volume"]
     df = df.dropna(subset=[c for c in needed if c in df.columns])
 
@@ -306,7 +305,6 @@ def long_signal(df: pd.DataFrame, require_div=True):
         return False, ["Frame too short"], None, None, (0,[])
 
     r1 = df.iloc[-2]
-    # guard for slope lookback
     if len(df) < 6:
         return False, ["Not enough bars for EMA slope check"], None, None, (0,[])
 
@@ -339,7 +337,7 @@ def long_signal(df: pd.DataFrame, require_div=True):
 
 # ---------------------- Suggested levels ----------------------- #
 def suggest_levels(df: pd.DataFrame, vp_lookback: int, vp_bins: int):
-    df = df.dropna(subset=["EMA50","EMA200","ATR14","Close"])  # ensure usable
+    df = df.dropna(subset=["EMA50","EMA200","ATR14","Close"])
     if df.empty:
         return np.nan, np.nan, None, None, None
     r = df.iloc[-1]
@@ -402,10 +400,14 @@ def telegram_discover_chat_id(token: str) -> str:
                     return str(cid)
     return ""
 
+def _parse_ids(s: str):
+    if not s: return []
+    return [p for p in re.split(r"[,\s]+", s) if p]
+
 def telegram_send(token: str, chat_id: str, text: str) -> bool:
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        r = requests.post(url, data={"chat_id": chat_id, "text": text}, timeout=8, verify=False)
+        r = requests.post(url, data={"chat_id": chat_id, "text": text}, timeout=12, verify=False)
         if r.status_code == 200:
             return True
         else:
@@ -420,31 +422,39 @@ def notify_all_channels(text: str):
             requests.post(WEBHOOK_URL, json={"text": text}, timeout=7)
         except Exception as e:
             print("[warn] webhook notify:", e, file=sys.stderr)
+
     token = TELEGRAM_BOT_TOKEN
-    chat  = TELEGRAM_CHAT_ID
-    if token:
-        if not chat and TELEGRAM_AUTO_DISCOVER:
-            print("[info] TELEGRAM_CHAT_ID not set; attempting auto-discovery via getUpdates...")
-            chat = telegram_discover_chat_id(token)
-        if chat:
-            telegram_send(token, chat, text)
-        else:
-            print("[warn] Telegram chat id missing. DM your bot first, then rerun (auto-discovery enabled).")
+    if not token:
+        print("[warn] TELEGRAM_BOT_TOKEN not set; skipping Telegram send")
+        return
+
+    ids = []
+    ids += _parse_ids(TELEGRAM_CHAT_IDS)
+    if TELEGRAM_CHAT_ID:
+        ids.append(TELEGRAM_CHAT_ID)
+
+    if not ids and TELEGRAM_AUTO_DISCOVER:
+        print("[info] TELEGRAM_CHAT_ID(S) not set; attempting auto-discovery via getUpdates...")
+        auto = telegram_discover_chat_id(token)
+        if auto:
+            ids = [auto]
+
+    if not ids:
+        print("[warn] Telegram chat id missing. DM your bot first, or set TELEGRAM_CHAT_ID(S).")
+        return
+
+    for cid in ids:
+        ok = telegram_send(token, cid, text)
+        print(f"[debug] telegram -> {cid}: {ok}")
 
 # -------------------------- Main pass --------------------------- #
 def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback: int):
-    o = compute(df)  # no blanket dropna
+    o = compute(df)
     if o.empty or len(o) < 210:
         raise ValueError("indicator frame empty/short after compute")
 
-    # run strategy
     buy, reasons, stop, _, (dcnt, dnames) = long_signal(o, require_div=True)
-    # levels
     sug_buy, sug_stop, poc, hvn_below, lvn_below = suggest_levels(o, vp_lookback, VP_BINS)
-
-    if o.empty:
-        raise ValueError("no usable rows for final snapshot")
-
     r = o.dropna(subset=["Close","EMA50","EMA200"]).iloc[-1]
 
     return Row(
@@ -502,7 +512,7 @@ def save_seen(s: Set[str]):
 def buy_key(row) -> str:
     return f"{row['ticker']}|{row['tf']}|{row['date']}"
 
-# ---------------------------- Loop runner ---------------------------- #
+# ---------------------------- Loop & Dips ---------------------------- #
 def is_market_open_now() -> bool:
     if not MARKET_ONLY:
         return True
@@ -511,43 +521,10 @@ def is_market_open_now() -> bool:
         return False
     return MARKET_START <= now.time() <= MARKET_END
 
-# ---- Dip alerts helper ---- #
-# def _send_dip_alerts(df):
-    # if not IDE_ALERT_ON_DIP:
-        # return
-    # tol = 1.0 + (DIP_TOL_PCT / 100.0)
-    # dips = df[
-        # (df["buy"] != "YES") &
-        # df["sug_buy"].notna() & df["sug_stop"].notna() &
-        # ((df["close"] < df["sug_buy"]) if DIP_REQUIRE_BELOW else (df["close"] <= df["sug_buy"] * tol)) &
-        # (df["close"] >= df["sug_stop"] * (1.0 + (DIP_MIN_ABOVE_STOP/100.0)))
-    # ].copy()
-    # if dips.empty:
-        # return
-    # seen = load_seen()
-    # new_rows = []
-    # for _, r in dips.iterrows():
-        # key = "DIP|" + buy_key(r)
-        # if key not in seen:
-            # new_rows.append(r); seen.add(key)
-    # if not new_rows:
-        # return
-    # lines = ["Dip tags (near sug_buy):", ""]
-    # for r in new_rows:
-        # lines.append(f"- {r['ticker']} [{r['tf']}] close {r['close']} ≤ sug_buy {r['sug_buy']} (stop {r['sug_stop']})")
-    # notify_all_channels("\n".join(lines))
-    # save_seen(seen)
-
-
-
-# ---- Dip alerts helper (replace the whole function with this) ----
-def _send_dip_alerts(df):
+def _compute_dips(df):
     if not IDE_ALERT_ON_DIP:
-        return
-
+        return df.iloc[0:0].copy()
     tol = 1.0 + (DIP_TOL_PCT / 100.0)
-
-    # Candidates: not already a confirmed BUY, have levels, and price near/under sug_buy
     dips = df[
         (df.get("buy", "") != "YES") &
         df["sug_buy"].notna() & df["sug_stop"].notna() &
@@ -555,58 +532,47 @@ def _send_dip_alerts(df):
           else (df["close"] <= df["sug_buy"] * tol) ) &
         (df["close"] >= df["sug_stop"] * (1.0 + (DIP_MIN_ABOVE_STOP/100.0)))
     ].copy()
+    return dips
 
-    if dips.empty:
-        return  # nothing to report this run
-
+def _send_dip_alerts(dips_df):
+    if dips_df.empty:
+        return
     seen = load_seen()
-    new_rows = []
-    ongoing_rows = []
-
-    for _, r in dips.iterrows():
-        key = "DIP|" + buy_key(r)  # e.g., DIP|AAPL|1D|2025-10-14
-        if key in seen:
-            ongoing_rows.append(r)
-        else:
-            new_rows.append(r)
+    new_rows, ongoing_rows = [], []
+    for _, r in dips_df.iterrows():
+        key = "DIP|" + buy_key(r)
+        (ongoing_rows if key in seen else new_rows).append(r)
+        if key not in seen:
             seen.add(key)
 
-    # Build the message with both sections (only include non-empty sections)
     lines = [f"Dip status {datetime.now().strftime('%Y-%m-%d %H:%M')}:"]
+
     def _fmt(row):
         return (f"- {row['ticker']} [{row['tf']}] "
                 f"close {row['close']} ≤ sug_buy {row['sug_buy']} "
                 f"(stop {row['sug_stop']})")
 
     if new_rows:
-        lines.append("")
-        lines.append("NEW dip tags:")
-        for r in new_rows:
-            lines.append(_fmt(r))
-
+        lines += ["", "NEW dip tags:"]
+        for r in new_rows: lines.append(_fmt(r))
     if ongoing_rows:
-        lines.append("")
-        lines.append("Still below sug_buy (previously alerted):")
-        for r in ongoing_rows:
-            lines.append(_fmt(r))
+        lines += ["", "Still below sug_buy (previously alerted):"]
+        for r in ongoing_rows: lines.append(_fmt(r))
 
-    # If there is at least one section, send and persist
     if len(lines) > 1:
         notify_all_channels("\n".join(lines))
         save_seen(seen)
-
 
 def run_once(first_run=False):
     if IDE_PRINT_TITLE and first_run:
         print("="*88); print(TITLE_TEXT); print("="*88)
 
-    if first_run and IDE_SEND_TEST_MESSAGE_ONCE:
+    if first_run and TELEGRAM_PING_ON_START:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-        notify_all_channels(f"Test ✔️ Scanner is live at {ts} (UTC).")
+        notify_all_channels(f"Scanner is live at {ts} (UTC).")
 
     df = build_dataframe()
 
-    # ---- Reorder columns to your desired layout ---- #
     desired = [
         "ticker","tf","date","sug_buy","close","buy","sug_stop","stop","poc",
         "ema50","ema200","adx","aroon_up","aroon_dn","hvn_below","lvn_below",
@@ -620,9 +586,10 @@ def run_once(first_run=False):
     df.to_csv(out, index=False)
     print("\nSaved:", out)
 
-    _send_dip_alerts(df)
+    # Dips + new BUYs
+    dips_df = _compute_dips(df)
+    _send_dip_alerts(dips_df)
 
-    # New BUYs only
     seen = load_seen()
     buys = df[(df["buy"]=="YES")]
     new_rows = []
@@ -641,6 +608,20 @@ def run_once(first_run=False):
         notify_all_channels("\n".join(lines))
         save_seen(seen)
 
+    # Optional summary even if nothing new
+    if ALWAYS_NOTIFY:
+        summary = [
+            f"Summary {datetime.now(ZoneInfo(MARKET_TZ)).strftime('%Y-%m-%d %H:%M %Z')}",
+            f"Universe size: {len(TICKERS)}",
+            f"BUY tickers now: {', '.join(sorted(buys['ticker'].tolist())) or '—'}",
+            f"Dips beneath sug_buy: {', '.join(sorted(dips_df['ticker'].tolist())) if not dips_df.empty else '—'}",
+        ]
+        notify_all_channels("\n".join(summary))
+
+    if (not first_run) and TELEGRAM_PING_ON_END:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        notify_all_channels(f"Scanner iteration completed at {ts} (UTC).")
+
 def main_loop():
     first = True
     while True if IDE_LOOP else False:
@@ -652,5 +633,14 @@ def main_loop():
     if not IDE_LOOP:
         run_once(first_run=True)
 
+# ------------------------------ Entry ------------------------------ #
+def market_open_now() -> bool:
+    now = datetime.now(ZoneInfo("America/New_York"))
+    return (now.weekday() < 5) and (dtime(9,30) <= now.time() <= dtime(16,0))
+
 if __name__ == "__main__":
+    # Respect market hours unless overridden by env MARKET_ONLY=false
+    if MARKET_ONLY and not market_open_now():
+        print("[done] Market closed — no scanning (set MARKET_ONLY=false or use the workflow toggle).", flush=True)
+        sys.exit(0)
     main_loop()
