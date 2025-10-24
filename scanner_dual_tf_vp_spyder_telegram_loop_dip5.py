@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
+scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
 Purpose:
 - Find *timely* long entries on quality pullbacks, not just "under sug_buy".
 - Dual-timeframe capable (1D core; optional 4H entry gate).
 - Telegram alerts (multi-recipient) + CSV output + de-dup state.
-
-Key upgrades vs dip3:
-  1) Trend quality: EMA200 non-declining + EMA50 linear-regression slope > 0
-  2) Regime filter: SPY must be constructive or signals are downgraded
-  3) Volume accumulation: recent up-day with ≥ 1.2x 20d average volume
-  4) Anchored VWAP (4w) guard for 4H entry (optional)
-  5) “Sweet-spot” band near EMA50 (EMA50 -0.5*ATR ... +0.25*ATR)
-  6) Reward/Risk screen vs recent swing-high target (≥ 1.5R)
-  7) Liquidity screen: 20d dollar volume ≥ $10M (default)
-  8) Confidence score + cleaner, non-duplicative Telegram summaries
 
 EDU only, not financial advice.
 """
@@ -49,7 +39,6 @@ def _env_int(name, default):
     except: return int(default)
 
 IDE_ENABLE_1D = True
-# from preset knob (IDE_ENABLE_4H) — default True
 IDE_ENABLE_4H = _env_bool("IDE_ENABLE_4H", True)
 IDE_SORT_TF_FIRST = "1D"
 IDE_PRINT_TITLE = True
@@ -80,28 +69,23 @@ RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","googl","msft","kl
 ALIAS = {"google":"GOOGL"}  # small typo map
 
 # --- Preset-driven risk/filters (names match YAML mapping) ---
-# Liquidity
 MIN_DOLLAR_VOL = _env_float("MIN_20D_DOLLAR_VOL", os.getenv("MIN_DOLLAR_VOL", "10000000"))
 
-# Regime
 REGIME_TICKER = os.getenv("REGIME_SYMBOL", os.getenv("REGIME_TICKER", "SPY"))
-# “downgrade to WATCH if regime is weak” ⇒ strict=True
 REGIME_STRICT = _env_bool("REGIME_DOWNGRADE_TO_WATCH", os.getenv("REGIME_STRICT", "true"))
 
-# Sweet-spot band around EMA50
 SWEET_ATR_LOW  = _env_float("BUY_LOWER_BAND_ATR_MULT", os.getenv("SWEET_ATR_LOW",  "0.5"))
 SWEET_ATR_HIGH = _env_float("BUY_UPPER_BAND_ATR_MULT", os.getenv("SWEET_ATR_HIGH", "0.25"))
 
-# Volume accumulation confirm
 VOL_UP_LOOKBACK = _env_int("VOL_UP_LOOKBACK", 10)
 VOL_UP_MULT     = _env_float("VOL_UP_MULT", 1.2)
 
-# Optional 4H anchored VWAP gate
 USE_AVWAP_4W_4H = _env_bool("ENFORCE_4H_ANCHORED_VWAP", os.getenv("USE_AVWAP_4W_4H", "true"))
 
-# Reward/Risk and divergence
 RR_MIN  = _env_float("MIN_RR", os.getenv("RR_MIN", "1.5"))
 DIV_MIN = _env_int("DIV_MIN", 2)
+
+DEBUG_DETAIL = _env_bool("DEBUG_DETAIL", False)
 
 # Periods
 DAILY_PERIOD="2y"; DAILY_INTERVAL="1d"
@@ -112,7 +96,7 @@ LB=5; RB=5
 TITLE_TEXT = (
     "Scanner (dip4): Trend + Sweet-spot + Volume + R/R + optional 4H AVWAP gate\n"
     "- Uses EMA50 LR-slope>0, EMA200 not falling, volume accumulation, and R/R.\n"
-    "- Sweet-spot is near EMA50: [EMA50-%.2f*ATR, EMA50+%.2f*ATR]." % (SWEET_ATR_LOW, SWEET_ATR_HIGH)
+    f"- Sweet-spot is near EMA50: [EMA50-{SWEET_ATR_LOW:.2f}*ATR, EMA50+{SWEET_ATR_HIGH:.2f}*ATR]."
 )
 
 # Log effective runtime config so you can verify presets applied
@@ -123,7 +107,7 @@ print("[cfg] SWEET_ATR_LOW/HIGH=", SWEET_ATR_LOW, SWEET_ATR_HIGH)
 print("[cfg] VOL_UP_LOOKBACK/MULT=", VOL_UP_LOOKBACK, VOL_UP_MULT)
 print("[cfg] USE_AVWAP_4W_4H=", USE_AVWAP_4W_4H)
 print("[cfg] RR_MIN=", RR_MIN, "DIV_MIN=", DIV_MIN)
-
+print("[cfg] DEBUG_DETAIL=", DEBUG_DETAIL)
 
 # ===================== UTIL / FETCH ===================== #
 def _squeeze_col(x):
@@ -146,7 +130,6 @@ def _ensure_ohlcv(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     for col in list(df.columns):
         try: df[col] = _squeeze_col(df[col])
         except Exception: pass
-    # normalize names
     rename = {c: c.title() for c in df.columns}
     df = df.rename(columns=rename)
     need = ["Open","High","Low","Close","Volume"]
@@ -173,10 +156,10 @@ def fetch_4h(ticker: str) -> pd.DataFrame:
     df = yf.download(ticker, period=INTRA_PERIOD, interval=INTRA_INTERVAL, auto_adjust=True, prepost=False, progress=False, group_by="column")
     if df.empty or len(df)<100: raise ValueError("insufficient intraday data")
     df = _ensure_ohlcv(df, ticker)
-    # resample to exact 4H
+    # resample to exact 4H — use lowercase 'h' to avoid deprecation
     if getattr(df.index, "tz", None) is not None:
         df = df.tz_localize(None)
-    return df.resample("4H").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna(how="any")
+    return df.resample("4h").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna(how="any")
 
 # ===================== INDICATORS ===================== #
 def ema(s: pd.Series, n: int): s=_squeeze_col(s); return s.ewm(span=n, adjust=False).mean()
@@ -201,7 +184,6 @@ def rsi(c,n=14):
 
 def aroon_up_down(h,l,n=14):
     h=_squeeze_col(h); l=_squeeze_col(l)
-    hh=h.rolling(n).max(); ll=l.rolling(n).min()
     up  = 100 * (h.rolling(n).apply(lambda x: (n-1)-np.argmax(x[::-1]), raw=True)) / n
     dn  = 100 * (l.rolling(n).apply(lambda x: (n-1)-np.argmin(x[::-1]), raw=True)) / n
     return up, dn
@@ -275,10 +257,7 @@ def bullish_div(price: pd.Series, indi: pd.Series, lb: int, rb: int):
     return (p.iloc[i2] < p.iloc[i1]) and (q.iloc[i2] > q.iloc[i1])
 
 def divergence_score(df: pd.DataFrame, lb: int, rb: int):
-    inds = {
-        "RSI": df["RSI14"], "MACD": macd(df["Close"])[0],
-        "WILLR": df["WILLR"]
-    }
+    inds = {"RSI": df["RSI14"], "MACD": macd(df["Close"])[0], "WILLR": df["WILLR"]}
     price = df["Close"]; names=[]
     for k, s in inds.items():
         try:
@@ -359,10 +338,8 @@ def divergence_ok(o: pd.DataFrame, min_count=2) -> Tuple[bool, str, int, List[st
 
 def risk_reward(o: pd.DataFrame, hvn_below: float|None, lvn_below: float|None) -> Tuple[bool, str, float, float, float]:
     r=o.iloc[-1]
-    # Stop under LVN (if exists) or EMA50-ATR
     stop = min((lvn_below if lvn_below is not None else r.EMA50 - r.ATR14), r.Low)  # conservative
     risk = max(r.Close - stop, 1e-6)
-    # Target = recent swing-high (20) or EMA50+2*ATR
     swing_high = float(o["Close"].rolling(20).max().iloc[-2]) if len(o)>=22 else r.Close + 2*r.ATR14
     tgt   = max(swing_high, r.EMA50 + 2*r.ATR14)
     rr = (tgt - r.Close) / risk
@@ -396,7 +373,6 @@ def suggest_levels(o: pd.DataFrame, lookback=180, bins=120):
     poc, hvn_below, lvn_below, centers, vols = volume_profile(o["Close"], o["Volume"], lookback, bins)
     lo = r.EMA50 - SWEET_ATR_LOW * r.ATR14
     hi = r.EMA50 + SWEET_ATR_HIGH* r.ATR14
-    # Choose a suggested buy inside sweet spot and ≥ HVN_below if present
     base = max(lo, hvn_below if hvn_below is not None else lo)
     sug_buy = round(float(np.clip(base, lo, hi)), 2)
     sug_stop = round(float(min((lvn_below if lvn_below is not None else r.EMA50 - r.ATR14), r.Low)), 2)
@@ -450,6 +426,11 @@ class Row:
     stop: float; target: float; rr: float; ema50: float; ema200: float; adx: float
     aroon_up: float; aroon_dn: float; hvn_below: float|None; lvn_below: float|None; poc: float|None
     div_cnt: int; reasons: str; conf: int; error: str
+    # debug flags (only printed when DEBUG_DETAIL = true)
+    trend_ok: Optional[bool] = None; liq_ok: Optional[bool] = None; vol_ok: Optional[bool] = None
+    sweet_ok: Optional[bool] = None; momo_ok: Optional[bool] = None; div_ok: Optional[bool] = None
+    rr_ok: Optional[bool] = None; regime_ok: Optional[bool] = None; avwap4h_ok: Optional[bool] = None
+    trigger_ok: Optional[bool] = None
 
 def _parse_universe() -> List[str]:
     env = (os.getenv("TICKERS","") or "").strip()
@@ -459,7 +440,6 @@ def _parse_universe() -> List[str]:
     return sorted({ALIAS.get(t.lower(), t.upper()) for t in RAW_TICKERS})
 
 def confidence_score(flags: Dict[str,bool]) -> int:
-    # 10 points each; cap to 100
     order = ["trend","volume","sweet","momentum","div","liquidity","rr","regime","avwap4h","price_trigger"]
     return int(min(100, sum(10 for k in order if flags.get(k, False))))
 
@@ -467,28 +447,22 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     o = compute(df)
     if o.empty or len(o) < 210: raise ValueError("indicator frame short")
 
-    # Trend + liquidity + volume + sweet spot
     ok_trend, t_reasons = long_trend_ok(o)
     ok_liq, liq_msg, dollar = liquidity_ok(o)
     ok_vol, vol_msg = volume_accum_ok(o, VOL_UP_LOOKBACK, VOL_UP_MULT)
     ok_sweet, sweet_msg = sweet_spot_ok(o)
 
-    # Momentum & divergence
     ok_momo, m_reasons = momentum_turn_ok(o)
     ok_div, div_msg, div_cnt, div_names = divergence_ok(o, DIV_MIN)
 
-    # VP levels + risk/reward
     sug_buy, sug_stop, poc, hvn_b, lvn_b, (band_lo, band_hi) = suggest_levels(o, vp_lookback, 120)
     ok_rr, rr_msg, stop, target, rr = risk_reward(o, hvn_b, lvn_b)
 
-    # Price action trigger (above prev high)
     r = o.iloc[-1]; r1 = o.iloc[-2]
     price_trigger = (r.Close > r1.High)
 
-    # Regime
     ok_regime, regime_msgs = regime_ok()
 
-    # Optional 4H anchored VWAP gate
     avwap4h_ok = True
     if IDE_ENABLE_4H and USE_AVWAP_4W_4H:
         try:
@@ -497,7 +471,7 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
             avwap4h_ok = (h4.iloc[-1].Close >= av) if np.isfinite(av) else True
         except Exception:
             avwap4h_ok = True  # fail-open
-    # Flags summary
+
     flags = {
         "trend": ok_trend, "liquidity": ok_liq, "volume": ok_vol, "sweet": ok_sweet,
         "momentum": ok_momo, "div": ok_div, "rr": ok_rr, "regime": ok_regime,
@@ -505,8 +479,6 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     }
     conf = confidence_score(flags)
 
-    # Status decision
-    # BUY = all primary gates pass: trend+liquidity+volume+sweet+momentum+div+rr (+regime & 4H gate if strict)
     primary_ok = ok_trend and ok_liq and ok_vol and ok_sweet and ok_momo and ok_div and ok_rr
     strict_ok  = primary_ok and ok_regime and avwap4h_ok and price_trigger
     if REGIME_STRICT:
@@ -533,7 +505,10 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         hvn_below=(None if hvn_b is None else round(float(hvn_b),2)),
         lvn_below=(None if lvn_b is None else round(float(lvn_b),2)),
         poc=(None if poc is None else round(float(poc),2)),
-        div_cnt=div_cnt, reasons=" | ".join(reasons), conf=conf, error=""
+        div_cnt=div_cnt, reasons=" | ".join(reasons), conf=conf, error="",
+        trend_ok=ok_trend, liq_ok=ok_liq, vol_ok=ok_vol, sweet_ok=ok_sweet,
+        momo_ok=ok_momo, div_ok=ok_div, rr_ok=ok_rr, regime_ok=ok_regime,
+        avwap4h_ok=avwap4h_ok, trigger_ok=price_trigger
     )
 
 def build_dataframe() -> pd.DataFrame:
@@ -592,15 +567,24 @@ def run_once(first_run=False):
 
     df = build_dataframe()
 
-    cols = ["ticker","tf","date","status","conf","close","sug_buy","sug_stop","stop","target","rr",
-            "ema50","ema200","adx","aroon_up","aroon_dn","poc","hvn_below","lvn_below",
-            "div_cnt","reasons","error"]
+    base_cols = ["ticker","tf","date","status","conf","close","sug_buy","sug_stop","stop","target","rr",
+                 "ema50","ema200","adx","aroon_up","aroon_dn","poc","hvn_below","lvn_below",
+                 "div_cnt","reasons","error"]
+    dbg_cols  = ["trend_ok","liq_ok","vol_ok","sweet_ok","momo_ok","div_ok","rr_ok","regime_ok","avwap4h_ok","trigger_ok"]
+    cols = base_cols + (dbg_cols if DEBUG_DETAIL else [])
     df = df[[c for c in cols if c in df.columns]]
 
     print(df.to_string(index=False))
     out = "scanner_dual_tf_vp_dip4.csv"
     df.to_csv(out, index=False)
     print("\nSaved:", out)
+
+    if DEBUG_DETAIL:
+        gates = [c for c in dbg_cols if c in df.columns]
+        print("\n[debug] gate pass counts:")
+        for g in gates:
+            print(f"  {g:12s} : {int(df[g].fillna(False).sum())} / {len(df)}")
+        print()
 
     # -------- Alerts (de-dup) --------
     seen = load_seen()
@@ -649,7 +633,7 @@ def main_loop():
         first=True
         while True:
             if is_market_open_now(): run_once(first_run=first); first=False
-            else: print("[info] market closed; sleeping...")
+            else: print("[info] market closed; sleeping...]")
             time.sleep(max(60, int(IDE_INTERVAL_MIN*60)))
     else:
         run_once(first_run=True)
