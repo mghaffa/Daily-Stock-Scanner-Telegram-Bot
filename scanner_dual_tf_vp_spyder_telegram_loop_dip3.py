@@ -640,7 +640,7 @@ def run_once(first_run=False):
     # Optional summary even if nothing new
     if ALWAYS_NOTIFY:
         summary = [
-            f"Summary {datetime.now(ZoneInfo(MARKET_TZ)).strftime('%Y-%m-%d %H:%M %Z')}",
+            f" Normal Version V1 Summary {datetime.now(ZoneInfo(MARKET_TZ)).strftime('%Y-%m-%d %H:%M %Z')}",
             f"Universe size: {len(TICKERS)}",
             f"BUY tickers now: {', '.join(sorted(buys['ticker'].tolist())) or '—'}",
             f"Dips beneath sug_buy: {', '.join(sorted(dips_df['ticker'].tolist())) if not dips_df.empty else '—'}",
@@ -673,6 +673,7 @@ if __name__ == "__main__":
         print("[done] Market closed — no scanning (set MARKET_ONLY=false or use the workflow toggle).", flush=True)
         sys.exit(0)
     main_loop()
+
 
 
 
