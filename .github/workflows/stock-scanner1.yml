@@ -65,17 +65,14 @@ jobs:
 
     steps:
       - name: Checkout
-      # ------------
         uses: actions/checkout@v4
 
       - name: Set up Python
-      # -------------------
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Cache pip
-      # ---------------
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
@@ -83,7 +80,6 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install deps
-      # -------------------
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
@@ -92,7 +88,7 @@ jobs:
             pip install pandas numpy yfinance requests certifi
           fi
 
-      # ---------- Optional market-hours guard at the workflow level ----------
+      # -------- Optional market-hours guard at the workflow level --------
       - name: Skip outside US RTH (unless overridden)
         run: |
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
@@ -104,7 +100,6 @@ jobs:
             fi
           fi
 
-      # ---------- Weekly cache key so state survives through the week ----------
       - name: Compute week key
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
 
@@ -126,12 +121,9 @@ jobs:
         run: |
           python - <<'PY'
           import os, json, sys
-
           profile = (os.environ.get("PROFILE","balanced") or "balanced").strip().lower()
 
-          # --- presets ---
           presets = {
-            # 1) Balanced (good default)
             "balanced": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
@@ -140,7 +132,6 @@ jobs:
               "BUY_LOWER_BAND_ATR_MULT": 0.5, "BUY_UPPER_BAND_ATR_MULT": 0.25,
               "MIN_RR": 1.5, "DIV_MIN": 2
             },
-            # 2) Conservative (choppy/weak tape)
             "conservative": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
@@ -149,7 +140,6 @@ jobs:
               "BUY_LOWER_BAND_ATR_MULT": 0.75, "BUY_UPPER_BAND_ATR_MULT": 0.5,
               "MIN_RR": 2.0, "DIV_MIN": 3
             },
-            # 3) Aggressive (clear bull trend)
             "aggressive": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": False,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": False,
@@ -161,18 +151,16 @@ jobs:
           }
 
           cfg = dict(presets.get(profile, presets["balanced"]))
-
           raw = (os.environ.get("ADVANCED_JSON","") or "").strip()
           if raw:
             try:
               user = json.loads(raw)
               if not isinstance(user, dict): raise ValueError("must be a JSON object")
-              cfg.update(user)  # user overrides preset
+              cfg.update(user)
             except Exception as e:
               print("Invalid ADVANCED_JSON:", e)
               sys.exit(1)
 
-          # map JSON keys -> env var names the script reads
           mapping = {
             "ENABLE_4H": "IDE_ENABLE_4H",
             "ENFORCE_4H_ANCHORED_VWAP": "ENFORCE_4H_ANCHORED_VWAP",
@@ -196,36 +184,29 @@ jobs:
                 if isinstance(v, bool):
                   v = as_bool(v)
                 f.write(f"{dst}={v}\n")
-            # pass through DEBUG_DETAIL from inputs (string "true"/"false")
             f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
+
           print("Effective profile:", profile)
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
 
       - name: Run scanner
-      # -------------
         env:
-          # Telegram (set in repo Settings → Secrets → Actions)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS:  ${{ secrets.TELEGRAM_CHAT_IDS }}
 
-          # Behavior toggles
           MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
           ALWAYS_NOTIFY: ${{ inputs.ALWAYS_NOTIFY && 'true' || 'false' }}
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
 
-          # Universe override — no symbol count limit here
           TICKERS: ${{ inputs.TICKERS }}
-
-          # Cache dir for de-dup state
           CACHE_DIR: .scanner_cache
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
       - name: Upload CSV + state as artifact
-      # ------------------------------------
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -235,7 +216,6 @@ jobs:
             .scanner_cache/alerts_dip4_seen.json
 
       - name: Save scanner cache
-      # ------------------------
         if: always()
         uses: actions/cache/save@v4
         with:
