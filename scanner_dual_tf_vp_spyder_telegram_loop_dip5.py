@@ -58,6 +58,7 @@ TELEGRAM_BOT_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID       = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 TELEGRAM_CHAT_IDS      = os.getenv("TELEGRAM_CHAT_IDS", "").strip()
 TELEGRAM_AUTO_DISCOVER = True
+NOTIFY_PREFIX = os.getenv("NOTIFY_PREFIX", "")
 ALWAYS_NOTIFY          = _env_bool("ALWAYS_NOTIFY", False)
 TELEGRAM_PING_ON_START = _env_bool("TELEGRAM_PING_ON_START", False)
 TELEGRAM_PING_ON_END   = _env_bool("TELEGRAM_PING_ON_END", False)
@@ -418,7 +419,14 @@ def _parse_ids(s: str):
     if not s: return []
     return [p for p in re.split(r"[,\s]+", s) if p]
 
+# Add to the existing cfg prints (just below the others)
+print("[cfg] ALWAYS_NOTIFY=", ALWAYS_NOTIFY, "NOTIFY_PREFIX=", NOTIFY_PREFIX)
+
 def notify_all(text: str):
+    # NEW: prepend a prefix (e.g., "[V2] ") to everything
+    if NOTIFY_PREFIX:
+        text = f"{NOTIFY_PREFIX}{text}"
+
     if WEBHOOK_URL:
         try: requests.post(WEBHOOK_URL, json={"text": text}, timeout=7)
         except Exception: pass
@@ -649,7 +657,7 @@ def run_once(first_run=False):
         notify_all("\n".join(lines))
         save_seen(seen)
 
-    if ALWAYS_NOTIFY and not (new_buys or new_watch):
+    if ALWAYS_NOTIFY:
         summary = [
             f"Summary {datetime.now(ZoneInfo(MARKET_TZ)).strftime('%Y-%m-%d %H:%M %Z')}",
             f"Universe: {len(_parse_universe())}",
@@ -657,7 +665,7 @@ def run_once(first_run=False):
             "Watch: " + (", ".join(sorted(watch['ticker'].tolist())) or "—"),
         ]
         notify_all("\n".join(summary))
-
+    
     if (not first_run) and TELEGRAM_PING_ON_END:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
         notify_all(f"dip4 iteration completed at {ts} (UTC).")
