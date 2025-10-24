@@ -23,7 +23,7 @@ on:
         description: "Optional override list (comma/space separated)"
         required: false
         default: ""
-  # Every 50 minutes on weekdays (UTC). Step below filters to US RTH by default.
+  # Every 45 minutes on weekdays (UTC). Step below filters to US RTH by default.
   schedule:
     - cron: "*/50 * * * 1-5"
 
