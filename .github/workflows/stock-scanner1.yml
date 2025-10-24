@@ -31,11 +31,15 @@ on:
           - conservative
           - aggressive
         default: balanced
+      DEBUG_DETAIL:
+        type: boolean
+        description: "Print per-ticker gate results and totals"
+        default: false
       ADVANCED_JSON:
         type: string
         description: >
           Optional overrides as JSON. Any keys here replace the preset values.
-          Example:
+          Examples:
           {"ENABLE_4H":true,"ENFORCE_4H_ANCHORED_VWAP":true,"REGIME_SYMBOL":"SPY",
            "REGIME_DOWNGRADE_TO_WATCH":true,"MIN_20D_DOLLAR_VOL":5000000,
            "VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"BUY_LOWER_BAND_ATR_MULT":0.5,
@@ -99,6 +103,7 @@ jobs:
         env:
           PROFILE: ${{ inputs.PROFILE }}
           ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
+          DEBUG_DETAIL: ${{ inputs.DEBUG_DETAIL && 'true' || 'false' }}
         run: |
           python - <<'PY'
           import os, json, sys
@@ -107,6 +112,7 @@ jobs:
 
           # --- presets ---
           presets = {
+            # 1) Balanced (good default)
             "balanced": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
@@ -115,6 +121,7 @@ jobs:
               "BUY_LOWER_BAND_ATR_MULT": 0.5, "BUY_UPPER_BAND_ATR_MULT": 0.25,
               "MIN_RR": 1.5, "DIV_MIN": 2
             },
+            # 2) Conservative (choppy/weak tape)
             "conservative": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
@@ -123,6 +130,7 @@ jobs:
               "BUY_LOWER_BAND_ATR_MULT": 0.75, "BUY_UPPER_BAND_ATR_MULT": 0.5,
               "MIN_RR": 2.0, "DIV_MIN": 3
             },
+            # 3) Aggressive (clear bull trend)
             "aggressive": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": False,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": False,
@@ -169,6 +177,8 @@ jobs:
                 if isinstance(v, bool):
                   v = as_bool(v)
                 f.write(f"{dst}={v}\n")
+            # pass through DEBUG_DETAIL from inputs
+            f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
 
           # for debugging in logs:
           print("Effective profile:", profile)
@@ -199,5 +209,5 @@ jobs:
         with:
           name: scanner-output
           path: |
-            scanner_dual_tf_vp.csv
-            alerts_seen.json
+            scanner_dual_tf_vp_dip4.csv
+            alerts_dip4_seen.json
