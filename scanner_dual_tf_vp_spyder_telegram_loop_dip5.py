@@ -87,9 +87,9 @@ DIV_MIN = _env_int("DIV_MIN", 2)
 
 DEBUG_DETAIL = _env_bool("DEBUG_DETAIL", False)
 
-# Periods
-DAILY_PERIOD="2y"; DAILY_INTERVAL="1d"
-INTRA_PERIOD="60d"; INTRA_INTERVAL="60m"
+# Periods (more history => smoother EMA/ATR; more stable VP bins)
+DAILY_PERIOD="max"; DAILY_INTERVAL="1d"
+INTRA_PERIOD="90d"; INTRA_INTERVAL="60m"
 
 LB=5; RB=5
 
@@ -147,16 +147,28 @@ def _ensure_ohlcv(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df = df.rename(columns={fixed[k]:k for k in fixed})
     return df[["Open","High","Low","Close","Volume"]]
 
+def _retry_download(*, ticker, period, interval, **kwargs):
+    last_err = None
+    for _ in range(3):
+        try:
+            df = yf.download(ticker, period=period, interval=interval,
+                             auto_adjust=True, progress=False, group_by="column", **kwargs)
+            if not df.empty:
+                return df
+        except Exception as e:
+            last_err = e
+        time.sleep(1.0)
+    return pd.DataFrame()
+
 def fetch_daily(ticker: str) -> pd.DataFrame:
-    df = yf.download(ticker, period=DAILY_PERIOD, interval=DAILY_INTERVAL, auto_adjust=True, progress=False, group_by="column")
+    df = _retry_download(ticker=ticker, period=DAILY_PERIOD, interval=DAILY_INTERVAL)
     if df.empty or len(df)<250: raise ValueError("insufficient daily data")
     return _ensure_ohlcv(df, ticker)
 
 def fetch_4h(ticker: str) -> pd.DataFrame:
-    df = yf.download(ticker, period=INTRA_PERIOD, interval=INTRA_INTERVAL, auto_adjust=True, prepost=False, progress=False, group_by="column")
+    df = _retry_download(ticker=ticker, period=INTRA_PERIOD, interval=INTRA_INTERVAL, prepost=False)
     if df.empty or len(df)<100: raise ValueError("insufficient intraday data")
     df = _ensure_ohlcv(df, ticker)
-    # resample to exact 4H — use lowercase 'h' to avoid deprecation
     if getattr(df.index, "tz", None) is not None:
         df = df.tz_localize(None)
     return df.resample("4h").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna(how="any")
@@ -367,16 +379,23 @@ def regime_ok() -> Tuple[bool, List[str]]:
     except Exception as e:
         return True, [f"regime check skipped: {e}"]  # fail-open
 
-# -------- VP suggested levels -------- #
+# -------- VP suggested levels (with robust fallbacks) -------- #
 def suggest_levels(o: pd.DataFrame, lookback=180, bins=120):
     r=o.iloc[-1]
     poc, hvn_below, lvn_below, centers, vols = volume_profile(o["Close"], o["Volume"], lookback, bins)
     lo = r.EMA50 - SWEET_ATR_LOW * r.ATR14
     hi = r.EMA50 + SWEET_ATR_HIGH* r.ATR14
-    base = max(lo, hvn_below if hvn_below is not None else lo)
-    sug_buy = round(float(np.clip(base, lo, hi)), 2)
-    sug_stop = round(float(min((lvn_below if lvn_below is not None else r.EMA50 - r.ATR14), r.Low)), 2)
-    return sug_buy, sug_stop, (None if poc is None else float(poc)), hvn_below, lvn_below, (lo, hi)
+
+    # Fallbacks to avoid NaN when no node exists below:
+    if hvn_below is None:
+        hvn_below = (poc if (poc is not None and poc <= float(r.Close)) else float(r.EMA50))
+    if lvn_below is None:
+        lvn_below = float(r.EMA50 - r.ATR14)
+
+    base = max(lo, float(hvn_below))
+    sug_buy  = round(float(np.clip(base, lo, hi)), 2)
+    sug_stop = round(float(min(float(lvn_below), float(r.Low))), 2)
+    return sug_buy, sug_stop, (None if poc is None else float(poc)), float(hvn_below), float(lvn_below), (lo, hi)
 
 # ===================== I/O & TELEGRAM ===================== #
 def telegram_get_updates(token: str) -> Optional[dict]:
@@ -426,11 +445,14 @@ class Row:
     stop: float; target: float; rr: float; ema50: float; ema200: float; adx: float
     aroon_up: float; aroon_dn: float; hvn_below: float|None; lvn_below: float|None; poc: float|None
     div_cnt: int; reasons: str; conf: int; error: str
-    # debug flags (only printed when DEBUG_DETAIL = true)
+    # debug flags (printed when DEBUG_DETAIL = true)
     trend_ok: Optional[bool] = None; liq_ok: Optional[bool] = None; vol_ok: Optional[bool] = None
     sweet_ok: Optional[bool] = None; momo_ok: Optional[bool] = None; div_ok: Optional[bool] = None
     rr_ok: Optional[bool] = None; regime_ok: Optional[bool] = None; avwap4h_ok: Optional[bool] = None
     trigger_ok: Optional[bool] = None
+    # bottleneck summaries (DEBUG only columns)
+    fail_primary: Optional[str] = None
+    fail_secondary: Optional[str] = None
 
 def _parse_universe() -> List[str]:
     env = (os.getenv("TICKERS","") or "").strip()
@@ -479,12 +501,18 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     }
     conf = confidence_score(flags)
 
-    primary_ok = ok_trend and ok_liq and ok_vol and ok_sweet and ok_momo and ok_div and ok_rr
-    strict_ok  = primary_ok and ok_regime and avwap4h_ok and price_trigger
+    # Primary vs secondary bottlenecks
+    primary_names   = ["trend","liquidity","volume","sweet","momentum","div","rr"]
+    secondary_names = ["regime","avwap4h","price_trigger"]
+    fail_primary    = ", ".join([n for n in primary_names if not flags.get(n, False)]) or ""
+    fail_secondary  = ", ".join([n for n in secondary_names if not flags.get(n, False)]) or ""
+
+    primary_ok = all(flags[n] for n in primary_names)
+    strict_ok  = primary_ok and flags["regime"] and flags["avwap4h"] and flags["price_trigger"]
     if REGIME_STRICT:
         status = "BUY" if strict_ok else ("WATCH" if primary_ok else "")
     else:
-        status = "BUY" if primary_ok and price_trigger else ("WATCH" if primary_ok else "")
+        status = "BUY" if primary_ok and flags["price_trigger"] else ("WATCH" if primary_ok else "")
 
     reasons = []
     reasons += t_reasons
@@ -508,7 +536,8 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         div_cnt=div_cnt, reasons=" | ".join(reasons), conf=conf, error="",
         trend_ok=ok_trend, liq_ok=ok_liq, vol_ok=ok_vol, sweet_ok=ok_sweet,
         momo_ok=ok_momo, div_ok=ok_div, rr_ok=ok_rr, regime_ok=ok_regime,
-        avwap4h_ok=avwap4h_ok, trigger_ok=price_trigger
+        avwap4h_ok=avwap4h_ok, trigger_ok=price_trigger,
+        fail_primary=fail_primary, fail_secondary=fail_secondary
     )
 
 def build_dataframe() -> pd.DataFrame:
@@ -521,20 +550,15 @@ def build_dataframe() -> pd.DataFrame:
         except Exception as e:
             rows.append(Row(t, "1D", "", "", np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,
                             np.nan,np.nan,np.nan,None,None,None,0,"",0, str(e)))
-        if IDE_ENABLE_4H:
-            try:
-                h4 = fetch_4h(t)
-                rows.append(process_one(t, "4H", h4, 200))
-            except Exception as e:
-                rows.append(Row(t, "4H", "", "", np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,
-                                np.nan,np.nan,np.nan,None,None,None,0,"",0, str(e)))
     df = pd.DataFrame([r.__dict__ for r in rows])
-    order = [IDE_SORT_TF_FIRST.upper()] + [x for x in ["1D","4H"] if x != IDE_SORT_TF_FIRST.upper()]
-    df["tf"] = pd.Categorical(df["tf"], categories=order, ordered=True)
+    df["tf"] = pd.Categorical(df["tf"], categories=["1D"], ordered=True)
     return df.sort_values(["tf","ticker"]).reset_index(drop=True)
 
 # -------- de-dup state for alerts -------- #
-STATE_FILE = os.path.join(os.getcwd(), "alerts_dip4_seen.json")
+CACHE_DIR = os.getenv("CACHE_DIR", ".scanner_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+STATE_FILE = os.path.join(CACHE_DIR, "alerts_dip4_seen.json")
+
 def load_seen() -> Set[str]:
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as f:
@@ -570,12 +594,20 @@ def run_once(first_run=False):
     base_cols = ["ticker","tf","date","status","conf","close","sug_buy","sug_stop","stop","target","rr",
                  "ema50","ema200","adx","aroon_up","aroon_dn","poc","hvn_below","lvn_below",
                  "div_cnt","reasons","error"]
-    dbg_cols  = ["trend_ok","liq_ok","vol_ok","sweet_ok","momo_ok","div_ok","rr_ok","regime_ok","avwap4h_ok","trigger_ok"]
+    dbg_cols  = ["trend_ok","liq_ok","vol_ok","sweet_ok","momo_ok","div_ok","rr_ok","regime_ok","avwap4h_ok","trigger_ok",
+                 "fail_primary","fail_secondary"]
     cols = base_cols + (dbg_cols if DEBUG_DETAIL else [])
     df = df[[c for c in cols if c in df.columns]]
 
+    # Optional console pretties (CSV keeps numerics)
+    for c in ("poc","hvn_below","lvn_below"):
+        if c in df.columns:
+            df[c] = df[c].astype(object).where(pd.notna(df[c]), "")
+
     print(df.to_string(index=False))
     out = "scanner_dual_tf_vp_dip4.csv"
+    # For CSV, keep actual NaN/None if any (we set fallbacks; POC may still be None)
+    df_csv = pd.read_csv(pd.compat.StringIO(df.to_csv(index=False))) if hasattr(pd, "compat") else df
     df.to_csv(out, index=False)
     print("\nSaved:", out)
 
@@ -583,6 +615,8 @@ def run_once(first_run=False):
         gates = [c for c in dbg_cols if c in df.columns]
         print("\n[debug] gate pass counts:")
         for g in gates:
+            if g.startswith("fail_"):  # skip counts for fail summaries
+                continue
             print(f"  {g:12s} : {int(df[g].fillna(False).sum())} / {len(df)}")
         print()
 
