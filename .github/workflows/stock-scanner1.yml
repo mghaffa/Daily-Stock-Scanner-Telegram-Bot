@@ -1,4 +1,4 @@
-name: Stock Scanner (Telegram)
+name: Stock Scanner V2 (Telegram)
 
 on:
   workflow_dispatch:
