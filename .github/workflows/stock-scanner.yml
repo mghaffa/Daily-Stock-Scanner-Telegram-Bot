@@ -23,13 +23,15 @@ on:
         description: "Optional override list (comma/space separated)"
         required: false
         default: ""
-  # Every 45 minutes on weekdays (UTC). Step below filters to US RTH by default.
+
+  # Fire every 10 min within a UTC window that covers both EST and EDT RTH.
+  # EDT: 13:30–20:00 UTC, EST: 14:30–21:00 UTC. We'll self-throttle to 50-min cadence.
   schedule:
-    - cron: "*/50 * * * 1-5"
+    - cron: "*/10 13-21 * * 1-5"
 
 concurrency:
   group: stock-scanner
-  cancel-in-progress: false
+  cancel-in-progress: true   # avoid overlap if a run lasts too long
 
 jobs:
   scan:
@@ -37,6 +39,7 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,34 +65,49 @@ jobs:
             pip install pandas numpy yfinance requests certifi
           fi
 
-      # Default: skip runs outside US RTH unless user allows after-hours
-      - name: Skip outside US RTH (unless overridden)
+      # Enforce US RTH AND a 50-min cadence anchored at 09:30 ET (unless overridden)
+      - name: Skip unless US RTH and on 50-min cadence (unless overridden)
         run: |
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
-            now=$(TZ=America/New_York date +%H%M)
             dow=$(TZ=America/New_York date +%u)
-            if [ "$dow" -ge 6 ] || [ "$now" -lt 0930 ] || [ "$now" -gt 1600 ]; then
+            hh=$(TZ=America/New_York date +%H)
+            mm=$(TZ=America/New_York date +%M)
+            mins=$((10#$hh*60 + 10#$mm))
+            open=$((9*60 + 30))   # 09:30
+            close=$((16*60))      # 16:00
+
+            # Weekend?
+            if [ "$dow" -ge 6 ]; then
+              echo "Weekend — exiting."
+              exit 0
+            fi
+
+            # Outside regular trading hours?
+            if [ $mins -lt $open ] || [ $mins -gt $close ]; then
               echo "Outside US RTH — exiting."
+              exit 0
+            fi
+
+            # 50-min cadence from the opening bell: 09:30, 10:20, 11:10, 12:00, 12:50, 13:40, 14:30, 15:20
+            if [ $(((mins - open) % 50)) -ne 0 ]; then
+              echo "Not on 50-min cadence — skipping this tick."
               exit 0
             fi
           fi
 
       - name: Run scanner
         env:
-          # --- Telegram secrets (set in repo Settings → Secrets and variables → Actions) ---
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          # Use one of these:
-          TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_CHAT_ID }}   # single chat id
-          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}  # OR multiple: "-480...,11122..." or "-480... 11122..."
+          TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
 
-          # --- Behavior toggles passed to the script ---
           MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
           ALWAYS_NOTIFY: ${{ inputs.ALWAYS_NOTIFY && 'true' || 'false' }}
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
         run: |
-          python scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
+          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
 
       - name: Upload CSV + state as artifact
         if: always()
