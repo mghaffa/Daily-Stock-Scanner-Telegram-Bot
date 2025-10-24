@@ -209,26 +209,32 @@ jobs:
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
 
+
+
       - name: Run scanner
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS:  ${{ secrets.TELEGRAM_CHAT_IDS }}
-
+      
           MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
-          #ALWAYS_NOTIFY: ${{ inputs.ALWAYS_NOTIFY && 'true' || 'false' }}
-          # In the "Run scanner" step -> env:
+      
+          # Manual runs: respect the UI toggle; Scheduled runs: ALWAYS true
           ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
             && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
             || 'true' }}
-
+      
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
-
+      
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
+      
+          # NEW: add a visible prefix to every message from this workflow
+          NOTIFY_PREFIX: "[Enhanced Version V2] "
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
+
 
       - name: Upload CSV + state as artifact
         if: always()
