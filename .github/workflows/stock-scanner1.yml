@@ -147,7 +147,7 @@ jobs:
           TICKERS: ${{ inputs.TICKERS }}
         run: |
           # Unbuffered output so you can see parsing logs immediately
-          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip3.py
+          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
 
       - name: Upload CSV + state as artifact
         if: always()
