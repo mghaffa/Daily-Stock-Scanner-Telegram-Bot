@@ -10,7 +10,7 @@ on:
       ALWAYS_NOTIFY:
         type: boolean
         description: "Send a summary even if there are no NEW alerts?"
-        default: false
+        default: true
       PING_ON_START:
         type: boolean
         description: "Send a startup ping?"
