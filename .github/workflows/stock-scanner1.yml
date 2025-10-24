@@ -19,37 +19,20 @@ on:
         type: boolean
         description: "Send a completion ping?"
         default: false
-
-      # --- Universe / basic toggles ---
       TICKERS:
         type: string
         description: "Optional override list (comma/space/semicolon/pipe separated)"
         default: ""
-      ENABLE_4H:
-        type: boolean
-        description: "Process 4H timeframe (used for entry timing/confidence)"
-        default: true
-      USE_AVWAP_4W_4H:
-        type: boolean
-        description: "Require 4H Close ≥ 4-week Anchored VWAP for entries"
-        default: true
-      REGIME_STRICT:
-        type: boolean
-        description: "Downgrade to WATCH if regime is weak"
-        default: true
-      MIN_DOLLAR_VOL:
-        type: string
-        description: "Min 20d $ volume (e.g. 10000000 = $10M)"
-        default: "10000000"
-
-      # --- Everything else goes here (JSON) ---
-      # Example: {"REGIME_TICKER":"SPY","VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"SWEET_ATR_LOW":0.5,"SWEET_ATR_HIGH":0.25,"RR_MIN":1.5,"DIV_MIN":2}
       ADVANCED_JSON:
         type: string
-        description: "Advanced settings as JSON (see example in help text)"
+        description: >
+          Advanced knobs as JSON. Example:
+          {"ENABLE_4H":true,"ENFORCE_4H_ANCHORED_VWAP":true,"REGIME_SYMBOL":"SPY",
+           "REGIME_DOWNGRADE_TO_WATCH":true,"MIN_20D_DOLLAR_VOL":1000000,
+           "VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"BUY_LOWER_BAND_ATR_MULT":0.5,
+           "BUY_UPPER_BAND_ATR_MULT":0.25,"MIN_RR":1.5,"DIV_MIN":2}
         default: ""
-
-  # Every 50 minutes on weekdays (UTC). Step below filters to US RTH by default.
+  # Every 50 minutes on weekdays (UTC)
   schedule:
     - cron: "*/50 * * * 1-5"
 
@@ -85,7 +68,7 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           else
-            pip install pandas numpy yfinance requests certifi urllib3
+            pip install pandas numpy yfinance requests certifi
           fi
 
       # Default: skip runs outside US RTH unless user allows after-hours
@@ -100,57 +83,70 @@ jobs:
             fi
           fi
 
+      # ---- EXPAND ADVANCED_JSON -> env (fixed heredoc) ----
       - name: Expand ADVANCED_JSON → env
+        shell: bash
         env:
           ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
-        shell: bash
         run: |
-          if [ -n "$ADVANCED_JSON" ]; then
-            python - <<'PY'
-            import os, json, sys
-            j=os.environ.get("ADVANCED_JSON","").strip()
-            if not j:
-                sys.exit(0)
-            try:
-                cfg=json.loads(j)
-            except Exception as e:
-                print(f"::error::Invalid ADVANCED_JSON: {e}")
-                sys.exit(1)
-            def norm(v):
-                if isinstance(v,bool): return "true" if v else "false"
-                return str(v)
-            with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
-                for k,v in cfg.items():
-                    k=str(k).strip()
-                    if not k: continue
-                    f.write(f"{k}={norm(v)}\n")
-                    print(f"Exported {k}={norm(v)}")
-            PY
-          fi
+          python - <<'PY'
+          import os, json, sys
+          raw = os.environ.get("ADVANCED_JSON","").strip()
+          if not raw:
+              sys.exit(0)
+          try:
+              cfg = json.loads(raw)
+          except Exception as e:
+              print("Invalid ADVANCED_JSON:", e)
+              sys.exit(1)
+
+          def put(k, v):
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+                  f.write(f"{k}={v}\n")
+
+          def norm_bool(x):
+              return "true" if str(x).lower() in ("1","true","yes","y","on") else "false"
+
+          # map JSON keys -> environment variables your script reads
+          M = {
+            "ENABLE_4H": "IDE_ENABLE_4H",
+            "ENFORCE_4H_ANCHORED_VWAP": "ENFORCE_4H_ANCHORED_VWAP",
+            "REGIME_SYMBOL": "REGIME_SYMBOL",
+            "REGIME_DOWNGRADE_TO_WATCH": "REGIME_DOWNGRADE_TO_WATCH",
+            "MIN_20D_DOLLAR_VOL": "MIN_20D_DOLLAR_VOL",
+            "VOL_UP_LOOKBACK": "VOL_UP_LOOKBACK",
+            "VOL_UP_MULT": "VOL_UP_MULT",
+            "BUY_LOWER_BAND_ATR_MULT": "BUY_LOWER_BAND_ATR_MULT",
+            "BUY_UPPER_BAND_ATR_MULT": "BUY_UPPER_BAND_ATR_MULT",
+            "MIN_RR": "MIN_RR",
+            "DIV_MIN": "DIV_MIN"
+          }
+
+          for src, dst in M.items():
+              if src in cfg:
+                  val = cfg[src]
+                  if isinstance(val, bool):
+                      val = norm_bool(val)
+                  put(dst, val)
+          PY
 
       - name: Run scanner
         env:
-          # --- Telegram secrets ---
+          # Telegram (set these in repo Settings → Secrets → Actions)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_IDS:  ${{ secrets.TELEGRAM_CHAT_IDS }}
 
-          # --- Behavior toggles ---
+          # Behavior toggles
           MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
           ALWAYS_NOTIFY: ${{ inputs.ALWAYS_NOTIFY && 'true' || 'false' }}
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
 
-          # --- Core knobs directly mapped ---
-          TICKERS:            ${{ inputs.TICKERS }}
-          IDE_ENABLE_4H:      ${{ inputs.ENABLE_4H && 'true' || 'false' }}
-          USE_AVWAP_4W_4H:    ${{ inputs.USE_AVWAP_4W_4H && 'true' || 'false' }}
-          REGIME_STRICT:      ${{ inputs.REGIME_STRICT && 'true' || 'false' }}
-          MIN_DOLLAR_VOL:     ${{ inputs.MIN_DOLLAR_VOL }}
-          # The rest (REGIME_TICKER, VOL_UP_LOOKBACK, VOL_UP_MULT, SWEET_ATR_LOW/HIGH, RR_MIN, DIV_MIN, …)
-          # come from ADVANCED_JSON via the previous step.
+          # Universe override
+          TICKERS: ${{ inputs.TICKERS }}
         run: |
-          # If your file is named differently, adjust below:
+          # Unbuffered output so you can see parsing logs immediately
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip3.py
 
       - name: Upload CSV + state as artifact
