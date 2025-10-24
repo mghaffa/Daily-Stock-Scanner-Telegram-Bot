@@ -23,12 +23,21 @@ on:
         type: string
         description: "Optional override list (comma/space/semicolon/pipe separated)"
         default: ""
+      PROFILE:
+        type: choice
+        description: "Preset"
+        options:
+          - balanced
+          - conservative
+          - aggressive
+        default: balanced
       ADVANCED_JSON:
         type: string
         description: >
-          Advanced knobs as JSON. Example:
+          Optional overrides as JSON. Any keys here replace the preset values.
+          Example:
           {"ENABLE_4H":true,"ENFORCE_4H_ANCHORED_VWAP":true,"REGIME_SYMBOL":"SPY",
-           "REGIME_DOWNGRADE_TO_WATCH":true,"MIN_20D_DOLLAR_VOL":1000000,
+           "REGIME_DOWNGRADE_TO_WATCH":true,"MIN_20D_DOLLAR_VOL":5000000,
            "VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"BUY_LOWER_BAND_ATR_MULT":0.5,
            "BUY_UPPER_BAND_ATR_MULT":0.25,"MIN_RR":1.5,"DIV_MIN":2}
         default: ""
@@ -46,6 +55,7 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,32 +93,60 @@ jobs:
             fi
           fi
 
-      # ---- EXPAND ADVANCED_JSON -> env (fixed heredoc) ----
-      - name: Expand ADVANCED_JSON → env
+      # ---- Build PRESET from PROFILE and merge ADVANCED_JSON, then export to env ----
+      - name: Expand PROFILE/ADVANCED_JSON → env
         shell: bash
         env:
+          PROFILE: ${{ inputs.PROFILE }}
           ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
         run: |
           python - <<'PY'
           import os, json, sys
-          raw = os.environ.get("ADVANCED_JSON","").strip()
-          if not raw:
-              sys.exit(0)
-          try:
-              cfg = json.loads(raw)
-          except Exception as e:
+
+          profile = (os.environ.get("PROFILE","balanced") or "balanced").strip().lower()
+
+          # --- presets ---
+          presets = {
+            "balanced": {
+              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
+              "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
+              "MIN_20D_DOLLAR_VOL": 5_000_000,
+              "VOL_UP_LOOKBACK": 10, "VOL_UP_MULT": 1.2,
+              "BUY_LOWER_BAND_ATR_MULT": 0.5, "BUY_UPPER_BAND_ATR_MULT": 0.25,
+              "MIN_RR": 1.5, "DIV_MIN": 2
+            },
+            "conservative": {
+              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
+              "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
+              "MIN_20D_DOLLAR_VOL": 10_000_000,
+              "VOL_UP_LOOKBACK": 12, "VOL_UP_MULT": 1.4,
+              "BUY_LOWER_BAND_ATR_MULT": 0.75, "BUY_UPPER_BAND_ATR_MULT": 0.5,
+              "MIN_RR": 2.0, "DIV_MIN": 3
+            },
+            "aggressive": {
+              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": False,
+              "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": False,
+              "MIN_20D_DOLLAR_VOL": 2_000_000,
+              "VOL_UP_LOOKBACK": 8, "VOL_UP_MULT": 1.0,
+              "BUY_LOWER_BAND_ATR_MULT": 0.4, "BUY_UPPER_BAND_ATR_MULT": 0.2,
+              "MIN_RR": 1.2, "DIV_MIN": 1
+            }
+          }
+
+          cfg = dict(presets.get(profile, presets["balanced"]))
+
+          raw = (os.environ.get("ADVANCED_JSON","") or "").strip()
+          if raw:
+            try:
+              user = json.loads(raw)
+              if not isinstance(user, dict): raise ValueError("must be a JSON object")
+              cfg.update(user)  # user overrides preset
+            except Exception as e:
               print("Invalid ADVANCED_JSON:", e)
               sys.exit(1)
 
-          def put(k, v):
-              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
-                  f.write(f"{k}={v}\n")
-
-          def norm_bool(x):
-              return "true" if str(x).lower() in ("1","true","yes","y","on") else "false"
-
-          # map JSON keys -> environment variables your script reads
-          M = {
+          # map JSON keys -> env var names the script reads
+          mapping = {
             "ENABLE_4H": "IDE_ENABLE_4H",
             "ENFORCE_4H_ANCHORED_VWAP": "ENFORCE_4H_ANCHORED_VWAP",
             "REGIME_SYMBOL": "REGIME_SYMBOL",
@@ -119,20 +157,27 @@ jobs:
             "BUY_LOWER_BAND_ATR_MULT": "BUY_LOWER_BAND_ATR_MULT",
             "BUY_UPPER_BAND_ATR_MULT": "BUY_UPPER_BAND_ATR_MULT",
             "MIN_RR": "MIN_RR",
-            "DIV_MIN": "DIV_MIN"
+            "DIV_MIN": "DIV_MIN",
           }
 
-          for src, dst in M.items():
-              if src in cfg:
-                  val = cfg[src]
-                  if isinstance(val, bool):
-                      val = norm_bool(val)
-                  put(dst, val)
+          def as_bool(v): return "true" if str(v).lower() in ("1","true","yes","on","y") else "false"
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+            for k, dst in mapping.items():
+              if k in cfg:
+                v = cfg[k]
+                if isinstance(v, bool):
+                  v = as_bool(v)
+                f.write(f"{dst}={v}\n")
+
+          # for debugging in logs:
+          print("Effective profile:", profile)
+          print("Effective config:", json.dumps(cfg, separators=(",",":")))
           PY
 
       - name: Run scanner
         env:
-          # Telegram (set these in repo Settings → Secrets → Actions)
+          # Telegram (set in repo Settings → Secrets → Actions)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS:  ${{ secrets.TELEGRAM_CHAT_IDS }}
@@ -143,10 +188,9 @@ jobs:
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
 
-          # Universe override
+          # Universe override — no symbol count limit here
           TICKERS: ${{ inputs.TICKERS }}
         run: |
-          # Unbuffered output so you can see parsing logs immediately
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
 
       - name: Upload CSV + state as artifact
