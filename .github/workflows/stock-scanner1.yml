@@ -20,13 +20,11 @@ on:
         description: "Send a completion ping?"
         default: false
 
-      # --- Universe / overrides ---
+      # --- Universe / basic toggles ---
       TICKERS:
         type: string
         description: "Optional override list (comma/space/semicolon/pipe separated)"
         default: ""
-
-      # --- Regime & 4H gating ---
       ENABLE_4H:
         type: boolean
         description: "Process 4H timeframe (used for entry timing/confidence)"
@@ -35,48 +33,21 @@ on:
         type: boolean
         description: "Require 4H Close ≥ 4-week Anchored VWAP for entries"
         default: true
-      REGIME_TICKER:
-        type: string
-        description: "Market regime symbol"
-        default: "SPY"
       REGIME_STRICT:
         type: boolean
         description: "Downgrade to WATCH if regime is weak"
         default: true
-
-      # --- Liquidity / volume confirmation ---
       MIN_DOLLAR_VOL:
         type: string
         description: "Min 20d $ volume (e.g. 10000000 = $10M)"
         default: "10000000"
-      VOL_UP_LOOKBACK:
-        type: string
-        description: "Lookback bars for up-day volume confirm"
-        default: "10"
-      VOL_UP_MULT:
-        type: string
-        description: "Up-day must be ≥ this × 20d avg volume"
-        default: "1.2"
 
-      # --- Sweet-spot band near EMA50 ---
-      SWEET_ATR_LOW:
+      # --- Everything else goes here (JSON) ---
+      # Example: {"REGIME_TICKER":"SPY","VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"SWEET_ATR_LOW":0.5,"SWEET_ATR_HIGH":0.25,"RR_MIN":1.5,"DIV_MIN":2}
+      ADVANCED_JSON:
         type: string
-        description: "Lower band: EMA50 - (this × ATR)"
-        default: "0.5"
-      SWEET_ATR_HIGH:
-        type: string
-        description: "Upper band: EMA50 + (this × ATR)"
-        default: "0.25"
-
-      # --- Quality gates ---
-      RR_MIN:
-        type: string
-        description: "Minimum Reward/Risk"
-        default: "1.5"
-      DIV_MIN:
-        type: string
-        description: "Min bullish divergence count"
-        default: "2"
+        description: "Advanced settings as JSON (see example in help text)"
+        default: ""
 
   # Every 50 minutes on weekdays (UTC). Step below filters to US RTH by default.
   schedule:
@@ -129,15 +100,33 @@ jobs:
             fi
           fi
 
-      - name: Show inputs (debug)
+      - name: Expand ADVANCED_JSON → env
+        env:
+          ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
+        shell: bash
         run: |
-          echo "TICKERS='${{ inputs.TICKERS }}'"
-          echo "ENABLE_4H=${{ inputs.ENABLE_4H }}"
-          echo "USE_AVWAP_4W_4H=${{ inputs.USE_AVWAP_4W_4H }}"
-          echo "REGIME_TICKER='${{ inputs.REGIME_TICKER }}' REGIME_STRICT=${{ inputs.REGIME_STRICT }}"
-          echo "MIN_DOLLAR_VOL=${{ inputs.MIN_DOLLAR_VOL }} VOL_UP_LOOKBACK=${{ inputs.VOL_UP_LOOKBACK }} VOL_UP_MULT=${{ inputs.VOL_UP_MULT }}"
-          echo "SWEET_ATR_LOW=${{ inputs.SWEET_ATR_LOW }} SWEET_ATR_HIGH=${{ inputs.SWEET_ATR_HIGH }}"
-          echo "RR_MIN=${{ inputs.RR_MIN }} DIV_MIN=${{ inputs.DIV_MIN }}"
+          if [ -n "$ADVANCED_JSON" ]; then
+            python - <<'PY'
+            import os, json, sys
+            j=os.environ.get("ADVANCED_JSON","").strip()
+            if not j:
+                sys.exit(0)
+            try:
+                cfg=json.loads(j)
+            except Exception as e:
+                print(f"::error::Invalid ADVANCED_JSON: {e}")
+                sys.exit(1)
+            def norm(v):
+                if isinstance(v,bool): return "true" if v else "false"
+                return str(v)
+            with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+                for k,v in cfg.items():
+                    k=str(k).strip()
+                    if not k: continue
+                    f.write(f"{k}={norm(v)}\n")
+                    print(f"Exported {k}={norm(v)}")
+            PY
+          fi
 
       - name: Run scanner
         env:
@@ -152,28 +141,17 @@ jobs:
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
 
-          # --- Universe override ---
-          TICKERS: ${{ inputs.TICKERS }}
-
-          # --- Regime & 4H gate ---
-          IDE_ENABLE_4H:     ${{ inputs.ENABLE_4H && 'true' || 'false' }}
-          USE_AVWAP_4W_4H:   ${{ inputs.USE_AVWAP_4W_4H && 'true' || 'false' }}
-          REGIME_TICKER:     ${{ inputs.REGIME_TICKER }}
-          REGIME_STRICT:     ${{ inputs.REGIME_STRICT && 'true' || 'false' }}
-
-          # --- Liquidity / volume confirmation ---
-          MIN_DOLLAR_VOL:    ${{ inputs.MIN_DOLLAR_VOL }}
-          VOL_UP_LOOKBACK:   ${{ inputs.VOL_UP_LOOKBACK }}
-          VOL_UP_MULT:       ${{ inputs.VOL_UP_MULT }}
-
-          # --- Sweet-spot and quality gates ---
-          SWEET_ATR_LOW:     ${{ inputs.SWEET_ATR_LOW }}
-          SWEET_ATR_HIGH:    ${{ inputs.SWEET_ATR_HIGH }}
-          RR_MIN:            ${{ inputs.RR_MIN }}
-          DIV_MIN:           ${{ inputs.DIV_MIN }}
+          # --- Core knobs directly mapped ---
+          TICKERS:            ${{ inputs.TICKERS }}
+          IDE_ENABLE_4H:      ${{ inputs.ENABLE_4H && 'true' || 'false' }}
+          USE_AVWAP_4W_4H:    ${{ inputs.USE_AVWAP_4W_4H && 'true' || 'false' }}
+          REGIME_STRICT:      ${{ inputs.REGIME_STRICT && 'true' || 'false' }}
+          MIN_DOLLAR_VOL:     ${{ inputs.MIN_DOLLAR_VOL }}
+          # The rest (REGIME_TICKER, VOL_UP_LOOKBACK, VOL_UP_MULT, SWEET_ATR_LOW/HIGH, RR_MIN, DIV_MIN, …)
+          # come from ADVANCED_JSON via the previous step.
         run: |
-          # Unbuffered so logs show ticker parsing & gates
-          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
+          # If your file is named differently, adjust below:
+          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip3.py
 
       - name: Upload CSV + state as artifact
         if: always()
@@ -181,5 +159,5 @@ jobs:
         with:
           name: scanner-output
           path: |
-            scanner_dual_tf_vp_dip4.csv
-            alerts_dip4_seen.json
+            scanner_dual_tf_vp.csv
+            alerts_seen.json
