@@ -63,7 +63,7 @@ TELEGRAM_PING_ON_END   = os.getenv("TELEGRAM_PING_ON_END", "false").lower() == "
 # Universe
 RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","googl","msft","klac","ibm","aapl",
                "tqqq","intc","bulz","cost","tsla","meta","now","nflx","hims","ntra","ddog","tsm",
-               "mu","crm","tem","rklb","crwd","uvxy","unh","jpm","abt","bynd"]
+               "mu","crm","tem","rklb","crwd","uvxy","unh","jpm","abt","bynd","race"]
 ALIAS = {"google":"GOOGL"}  # small typo map
 
 # Risk/Regime/Liquidity controls
