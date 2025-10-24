@@ -102,7 +102,10 @@ jobs:
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
 
           MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
-          ALWAYS_NOTIFY: ${{ inputs.ALWAYS_NOTIFY && 'true' || 'false' }}
+          #ALWAYS_NOTIFY: ${{ inputs.ALWAYS_NOTIFY && 'true' || 'false' }}
+          ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
+              && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
+              || 'true' }}
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
