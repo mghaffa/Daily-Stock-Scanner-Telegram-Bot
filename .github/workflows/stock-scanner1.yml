@@ -27,8 +27,8 @@ on:
         type: choice
         description: "Preset"
         options:
-          - balanced
-          - conservative
+          - balanced (core)
+          - conservative (strict)
           - aggressive (loose)
         default: balanced
       DEBUG_DETAIL:
@@ -124,7 +124,7 @@ jobs:
           profile = (os.environ.get("PROFILE","balanced") or "balanced").strip().lower()
 
           presets = {
-            "balanced": {
+            "balanced (core)": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
               "MIN_20D_DOLLAR_VOL": 5_000_000,
@@ -132,7 +132,7 @@ jobs:
               "BUY_LOWER_BAND_ATR_MULT": 0.5, "BUY_UPPER_BAND_ATR_MULT": 0.25,
               "MIN_RR": 1.5, "DIV_MIN": 2
             },
-            "conservative": {
+            "conservative (strict)": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
               "MIN_20D_DOLLAR_VOL": 10_000_000,
