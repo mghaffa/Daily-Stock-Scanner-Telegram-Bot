@@ -191,7 +191,7 @@ jobs:
           # Universe override — no symbol count limit here
           TICKERS: ${{ inputs.TICKERS }}
         run: |
-          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
+          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
       - name: Upload CSV + state as artifact
         if: always()
