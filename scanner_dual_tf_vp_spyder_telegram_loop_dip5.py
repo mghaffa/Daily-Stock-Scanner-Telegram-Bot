@@ -350,7 +350,7 @@ def divergence_ok(o: pd.DataFrame, min_count=2) -> Tuple[bool, str, int, List[st
 
 def risk_reward(o: pd.DataFrame, hvn_below: float|None, lvn_below: float|None) -> Tuple[bool, str, float, float, float]:
     r=o.iloc[-1]
-    stop = min((lvn_below if lvn_below is not None else r.EMA50 - r.ATR14), r.Low)  # conservative
+    stop = min((lvn_below if lvn_below is not None else r.EMA50 - r.ATR14), r.Low)
     risk = max(r.Close - stop, 1e-6)
     swing_high = float(o["Close"].rolling(20).max().iloc[-2]) if len(o)>=22 else r.Close + 2*r.ATR14
     tgt   = max(swing_high, r.EMA50 + 2*r.ATR14)
@@ -599,15 +599,15 @@ def run_once(first_run=False):
     cols = base_cols + (dbg_cols if DEBUG_DETAIL else [])
     df = df[[c for c in cols if c in df.columns]]
 
-    # Optional console pretties (CSV keeps numerics)
+    # Make a pretty console view that doesn't contaminate the CSV
+    df_view = df.copy()
     for c in ("poc","hvn_below","lvn_below"):
-        if c in df.columns:
-            df[c] = df[c].astype(object).where(pd.notna(df[c]), "")
+        if c in df_view.columns:
+            df_view[c] = df_view[c].astype(object).where(pd.notna(df_view[c]), "")
 
-    print(df.to_string(index=False))
+    print(df_view.to_string(index=False))
+
     out = "scanner_dual_tf_vp_dip4.csv"
-    # For CSV, keep actual NaN/None if any (we set fallbacks; POC may still be None)
-    df_csv = pd.read_csv(pd.compat.StringIO(df.to_csv(index=False))) if hasattr(pd, "compat") else df
     df.to_csv(out, index=False)
     print("\nSaved:", out)
 
