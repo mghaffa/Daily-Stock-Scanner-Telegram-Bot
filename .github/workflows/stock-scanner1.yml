@@ -48,13 +48,15 @@ on:
            "VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"BUY_LOWER_BAND_ATR_MULT":0.5,
            "BUY_UPPER_BAND_ATR_MULT":0.25,"MIN_RR":1.5,"DIV_MIN":2}
         default: ""
-  # Every 50 minutes on weekdays (UTC)
+
+  # Fire every 10 min during a broad UTC window that covers EST/EDT
+  # (EDT RTH ≈ 13:30–20:00 UTC; EST RTH ≈ 14:30–21:00 UTC).
   schedule:
-    - cron: "*/50 * * * 1-5"
+    - cron: "*/10 13-21 * * 1-5"
 
 concurrency:
   group: stock-scanner
-  cancel-in-progress: false
+  cancel-in-progress: true   # avoid overlaps if a tick runs long
 
 jobs:
   scan:
@@ -88,14 +90,32 @@ jobs:
             pip install pandas numpy yfinance requests certifi
           fi
 
-      # -------- Optional market-hours guard at the workflow level --------
-      - name: Skip outside US RTH (unless overridden)
+      # ---- Market-hours guard + 50-min cadence anchored at 09:30 ET ----
+      - name: Skip unless US RTH AND on 50-min cadence (unless overridden)
         run: |
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
-            now=$(TZ=America/New_York date +%H%M)
             dow=$(TZ=America/New_York date +%u)
-            if [ "$dow" -ge 6 ] || [ "$now" -lt 0930 ] || [ "$now" -gt 1600 ]; then
+            hh=$(TZ=America/New_York date +%H)
+            mm=$(TZ=America/New_York date +%M)
+            mins=$((10#$hh*60 + 10#$mm))
+            open=$((9*60 + 30))   # 09:30
+            close=$((16*60))      # 16:00
+
+            # Weekends?
+            if [ "$dow" -ge 6 ]; then
+              echo "Weekend — exiting."
+              exit 0
+            fi
+
+            # Outside RTH?
+            if [ $mins -lt $open ] || [ $mins -gt $close ]; then
               echo "Outside US RTH — exiting."
+              exit 0
+            fi
+
+            # Throttle to every 50 minutes from 09:30 (9:30, 10:20, 11:10, 12:00, 12:50, 13:40, 14:30, 15:20)
+            if [ $(((mins - open) % 50)) -ne 0 ]; then
+              echo "Not on 50-min cadence — skipping this tick."
               exit 0
             fi
           fi
@@ -104,6 +124,7 @@ jobs:
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
 
       - name: Restore scanner cache
+        id: scancache
         uses: actions/cache/restore@v4
         with:
           path: .scanner_cache
@@ -121,8 +142,7 @@ jobs:
         run: |
           python - <<'PY'
           import os, json, sys
-          profile = (os.environ.get("PROFILE","balanced (core)") or "balanced (core) ").strip().lower()
-
+          profile = (os.environ.get("PROFILE","balanced (core)") or "balanced (core)").strip().lower()
           presets = {
             "balanced (core)": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
@@ -149,7 +169,6 @@ jobs:
               "MIN_RR": 1.2, "DIV_MIN": 1
             }
           }
-
           cfg = dict(presets.get(profile, presets["balanced (core)"]))
           raw = (os.environ.get("ADVANCED_JSON","") or "").strip()
           if raw:
@@ -216,7 +235,7 @@ jobs:
             .scanner_cache/alerts_dip4_seen.json
 
       - name: Save scanner cache
-        if: always()
+        if: always() && steps.scancache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .scanner_cache
