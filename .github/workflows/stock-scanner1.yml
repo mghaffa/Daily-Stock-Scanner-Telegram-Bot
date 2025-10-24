@@ -30,7 +30,7 @@ on:
           - balanced (core)
           - conservative (strict)
           - aggressive (loose)
-        default: balanced
+        default: balanced (core)
       DEBUG_DETAIL:
         type: choice
         description: "Include per-ticker gate flags & bottlenecks in the output?"
@@ -121,7 +121,7 @@ jobs:
         run: |
           python - <<'PY'
           import os, json, sys
-          profile = (os.environ.get("PROFILE","balanced") or "balanced").strip().lower()
+          profile = (os.environ.get("PROFILE","balanced (core)") or "balanced (core) ").strip().lower()
 
           presets = {
             "balanced (core)": {
@@ -150,7 +150,7 @@ jobs:
             }
           }
 
-          cfg = dict(presets.get(profile, presets["balanced"]))
+          cfg = dict(presets.get(profile, presets["balanced (core)"]))
           raw = (os.environ.get("ADVANCED_JSON","") or "").strip()
           if raw:
             try:
