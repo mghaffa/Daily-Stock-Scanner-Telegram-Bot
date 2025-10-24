@@ -89,7 +89,7 @@ jobs:
           TELEGRAM_PING_ON_END:   ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
         run: |
-          python scanner_dual_tf_vp_spyder_telegram_loop_dip3.py
+          python scanner_dual_tf_vp_spyder_telegram_loop_dip4.py
 
       - name: Upload CSV + state as artifact
         if: always()
