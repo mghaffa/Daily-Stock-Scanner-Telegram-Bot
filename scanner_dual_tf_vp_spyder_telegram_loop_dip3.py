@@ -562,7 +562,7 @@ def _send_dip_alerts(dips_df):
                 f"(stop {sug_stop:.2f})")
 
     # Build the message with two always-present sections
-    lines = [f"Stock status {datetime.now().strftime('%Y-%m-%d %H:%M')}:",
+    lines = [f"Stock status V1 {datetime.now().strftime('%Y-%m-%d %H:%M')}:",
              "",
              "Still below sug_buy (previously alerted):",
              "======="]
@@ -673,6 +673,7 @@ if __name__ == "__main__":
         print("[done] Market closed — no scanning (set MARKET_ONLY=false or use the workflow toggle).", flush=True)
         sys.exit(0)
     main_loop()
+
 
 
 
