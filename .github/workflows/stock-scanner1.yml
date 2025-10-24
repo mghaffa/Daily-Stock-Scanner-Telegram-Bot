@@ -32,8 +32,11 @@ on:
           - aggressive
         default: balanced
       DEBUG_DETAIL:
-        type: boolean
-        description: "Print per-ticker gate results and totals"
+        type: choice
+        description: "Include per-ticker gate flags & bottlenecks in the output?"
+        options:
+          - false
+          - true
         default: false
       ADVANCED_JSON:
         type: string
@@ -62,14 +65,17 @@ jobs:
 
     steps:
       - name: Checkout
+      # ------------
         uses: actions/checkout@v4
 
       - name: Set up Python
+      # -------------------
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Cache pip
+      # ---------------
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
@@ -77,6 +83,7 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install deps
+      # -------------------
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
@@ -85,7 +92,7 @@ jobs:
             pip install pandas numpy yfinance requests certifi
           fi
 
-      # Default: skip runs outside US RTH unless user allows after-hours
+      # ---------- Optional market-hours guard at the workflow level ----------
       - name: Skip outside US RTH (unless overridden)
         run: |
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
@@ -97,13 +104,25 @@ jobs:
             fi
           fi
 
+      # ---------- Weekly cache key so state survives through the week ----------
+      - name: Compute week key
+        run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
+
+      - name: Restore scanner cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .scanner_cache
+          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
+          restore-keys: |
+            scanner-cache-${{ runner.os }}-
+
       # ---- Build PRESET from PROFILE and merge ADVANCED_JSON, then export to env ----
       - name: Expand PROFILE/ADVANCED_JSON → env
         shell: bash
         env:
           PROFILE: ${{ inputs.PROFILE }}
           ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
-          DEBUG_DETAIL: ${{ inputs.DEBUG_DETAIL && 'true' || 'false' }}
+          DEBUG_DETAIL: ${{ inputs.DEBUG_DETAIL }}
         run: |
           python - <<'PY'
           import os, json, sys
@@ -177,15 +196,14 @@ jobs:
                 if isinstance(v, bool):
                   v = as_bool(v)
                 f.write(f"{dst}={v}\n")
-            # pass through DEBUG_DETAIL from inputs
+            # pass through DEBUG_DETAIL from inputs (string "true"/"false")
             f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
-
-          # for debugging in logs:
           print("Effective profile:", profile)
-          print("Effective config:", json.dumps(cfg, separators=(",",":")))
+          print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
 
       - name: Run scanner
+      # -------------
         env:
           # Telegram (set in repo Settings → Secrets → Actions)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -200,14 +218,26 @@ jobs:
 
           # Universe override — no symbol count limit here
           TICKERS: ${{ inputs.TICKERS }}
+
+          # Cache dir for de-dup state
+          CACHE_DIR: .scanner_cache
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
       - name: Upload CSV + state as artifact
+      # ------------------------------------
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: scanner-output
           path: |
             scanner_dual_tf_vp_dip4.csv
-            alerts_dip4_seen.json
+            .scanner_cache/alerts_dip4_seen.json
+
+      - name: Save scanner cache
+      # ------------------------
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .scanner_cache
+          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
