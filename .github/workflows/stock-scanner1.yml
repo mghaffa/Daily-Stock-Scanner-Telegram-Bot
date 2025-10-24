@@ -29,7 +29,7 @@ on:
         options:
           - balanced
           - conservative
-          - aggressive
+          - aggressive (loose)
         default: balanced
       DEBUG_DETAIL:
         type: choice
@@ -140,7 +140,7 @@ jobs:
               "BUY_LOWER_BAND_ATR_MULT": 0.75, "BUY_UPPER_BAND_ATR_MULT": 0.5,
               "MIN_RR": 2.0, "DIV_MIN": 3
             },
-            "aggressive": {
+            "aggressive (loose)": {
               "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": False,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": False,
               "MIN_20D_DOLLAR_VOL": 2_000_000,
