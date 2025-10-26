@@ -1,16 +1,6 @@
 name: Stock Scanner V3 (Telegram)
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false  # make it true avoid overlap if a run lasts too long
-
-
 on:
-  # Fire every 10 min during a broad UTC window that covers EST/EDT
-  # (EDT RTH ≈ 13:30–20:00 UTC; EST RTH ≈ 14:30–21:00 UTC).
-  schedule:
-    - cron: "*/10 13-21 * * 1-5"
-
   workflow_dispatch:
     inputs:
       RUN_AFTER_HOURS:
@@ -60,6 +50,16 @@ on:
            "SUPPORT_MIN_PASS":2,"SOFT_SWEET_PAD_ATR":0.25,"AVWAP_TOL_ATR":0.25,
            "PRICE_TRIGGER_EASED":true}
         default: ""
+
+  # Fire every 10 min during a broad UTC window that covers EST/EDT
+  # (EDT RTH ≈ 13:30–20:00 UTC; EST RTH ≈ 14:30–21:00 UTC).
+  schedule:
+    - cron: "*/10 13-21 * * 1-5"
+
+concurrency:
+  group: stock-scanner
+  cancel-in-progress: true   # avoid overlaps if a tick runs long
+
 
 jobs:
   scan:
