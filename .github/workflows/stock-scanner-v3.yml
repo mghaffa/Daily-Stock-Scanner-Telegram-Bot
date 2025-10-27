@@ -2,7 +2,7 @@ name: Stock Scanner V3 (Telegram)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true   # avoid overlap if a run lasts too long
+  cancel-in-progress: false   # avoid overlap if a run lasts too long
 
 on:
   # Poll every 5 min within a UTC window that covers both EDT and EST RTH.
