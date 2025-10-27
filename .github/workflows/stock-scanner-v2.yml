@@ -8,7 +8,7 @@ on:
   # Fire every 10 min within a UTC window that covers both EST and EDT RTH.
   # EDT: 13:30–20:00 UTC, EST: 14:30–21:00 UTC. We'll self-throttle to 50-min cadence.
   schedule:
-    - cron: "*/50 13-21 * * 1-5"
+    - cron: "*/55 13-21 * * 1-5"
 
   workflow_dispatch:
     inputs:
