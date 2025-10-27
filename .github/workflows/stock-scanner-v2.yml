@@ -143,15 +143,6 @@ jobs:
           restore-keys: |
             scanner-cache-${{ runner.os }}-
 
-      - name: Restore scanner cache
-        id: scancache
-        uses: actions/cache/restore@v4
-        with:
-          path: .scanner_cache
-          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
-          restore-keys: |
-            scanner-cache-${{ runner.os }}-
-
       # ---- Build PRESET from PROFILE and merge ADVANCED_JSON, then export to env ----
       - name: Expand PROFILE/ADVANCED_JSON → env
         shell: bash
@@ -271,8 +262,6 @@ jobs:
         with:
           path: .scanner_cache
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
-
-
 
 
 ## Old version V2
