@@ -1,6 +1,15 @@
 name: Stock Scanner V3 (Telegram)
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true   # avoid overlap if a run lasts too long
+
 on:
+  # Poll every 5 min within a UTC window that covers both EDT and EST RTH.
+  # EDT RTH ≈ 13:30–20:00 UTC; EST RTH ≈ 14:30–21:00 UTC.
+  schedule:
+    - cron: "*/5 13-21 * * 1-5"
+
   workflow_dispatch:
     inputs:
       RUN_AFTER_HOURS:
@@ -33,14 +42,6 @@ on:
         description: "Include per-ticker gate flags & bottlenecks in the output?"
         options: [false, true]
         default: false
-
-  # Poll every 5 min during a UTC window that covers RTH for both EDT and EST
-  schedule:
-    - cron: "*/5 13-22 * * 1-5"
-
-concurrency:
-  group: stock-scanner
-  cancel-in-progress: true
 
 jobs:
   scan:
