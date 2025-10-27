@@ -93,47 +93,55 @@ jobs:
           fi
 
       # ---- Market-hours guard + 50-min cadence anchored at 09:30 ET ----
-      - name: Skip unless US RTH AND on 50-min cadence (unless overridden)
+      # ---- Gate: US RTH + 45-min cadence anchored at 09:30 ET ----
+      - name: Gate cadence (sets output ok=yes|no)
+        id: gate
         shell: bash
         run: |
+          ok=yes
+          reason=""
+          dow=$(TZ=America/New_York date +%u)
+          hh=$(TZ=America/New_York date +%H)
+          mm=$(TZ=America/New_York date +%M)
+          mins=$((10#$hh*60 + 10#$mm))
+          open=$((9*60 + 30))   # 09:30
+          close=$((16*60))      # 16:00
+          cad=${CADENCE_MIN:-45}
+          tol=${TOLERANCE_MIN:-3}
+
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
-            dow=$(TZ=America/New_York date +%u)
-            hh=$(TZ=America/New_York date +%H)
-            mm=$(TZ=America/New_York date +%M)
-            mins=$((10#$hh*60 + 10#$mm))
-            open=$((9*60 + 30))   # 09:30
-            close=$((16*60))      # 16:00
-
-            # Weekends?
             if [ "$dow" -ge 6 ]; then
-              echo "Weekend — exiting."
-              exit 0
-            fi
-
-            # Outside RTH? (exclude 16:00+)
-            if [ $mins -lt $open ] || [ $mins -ge $close ]; then
-              echo "Outside US RTH — exiting."
-              exit 0
-            fi
-
-            # Every 50 minutes from 09:30 with ±3 min tolerance:
-            # 09:30, 10:20, 11:10, 12:00, 12:50, 13:40, 14:30, 15:20
-            cad=${CADENCE_MIN:-50}
-            tol=${TOLERANCE_MIN:-3}
-            delta=$(( mins - open ))
-            # positive modulus even if delta < 0 (shouldn't happen inside RTH)
-            rem=$(( ( (delta % cad) + cad ) % cad ))
-
-            if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
-              echo "On $cad-min cadence (09:30 + n*$cad) with tol=$tol (rem=$rem) — proceeding."
+              ok=no; reason="weekend"
+            elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
+              ok=no; reason="outside RTH"
             else
-              echo "Not on $cad-min cadence (rem=$rem, tol=$tol) — skipping this tick."
-              exit 0
+              delta=$(( mins - open ))
+              rem=$(( ( (delta % cad) + cad ) % cad ))
+              if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+                ok=yes
+              else
+                ok=no; reason="off cadence (rem=$rem tol=$tol)"
+              fi
             fi
           fi
 
+          HM=$(TZ=America/New_York date +'%H:%M')
+          echo "now=$HM" >> "$GITHUB_OUTPUT"
+          echo "ok=$ok"  >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "Gate result: ok=$ok; $reason; NY time=$HM"
+
       - name: Compute week key
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
+
+      - name: Restore scanner cache
+        id: scancache
+        uses: actions/cache/restore@v4
+        with:
+          path: .scanner_cache
+          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
+          restore-keys: |
+            scanner-cache-${{ runner.os }}-
 
       - name: Restore scanner cache
         id: scancache
