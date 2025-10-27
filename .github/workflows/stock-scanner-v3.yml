@@ -54,7 +54,7 @@ on:
   # Fire every 10 min during a broad UTC window that covers EST/EDT
   # (EDT RTH ≈ 13:30–20:00 UTC; EST RTH ≈ 14:30–21:00 UTC).
   schedule:
-    - cron: "*/10 13-21 * * 1-5"
+    - cron: "*/50 13-21 * * 1-5"
 
 concurrency:
   group: stock-scanner
