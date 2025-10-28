@@ -5,35 +5,34 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  # Trim cron noise to every 10 min during US RTH windows in UTC.
-  # You can keep */5 if you want finer alignment; the gate controls execution.
+  # Reduce cron noise; gate controls the true cadence.
   schedule:
-    - cron: "*/10 13-21 * * 1-5"
+    - cron: '*/10 13-21 * * 1-5'
   workflow_dispatch:
     inputs:
       RUN_AFTER_HOURS:
         type: boolean
-        description: "Allow running outside US market hours?"
+        description: 'Allow running outside US market hours?'
         default: false
       ALWAYS_NOTIFY:
         type: boolean
-        description: "Send a summary even if there are no NEW alerts?"
+        description: 'Send a summary even if there are no NEW alerts?'
         default: true
       PING_ON_START:
         type: boolean
-        description: "Send a startup ping?"
+        description: 'Send a startup ping?'
         default: false
       PING_ON_END:
         type: boolean
-        description: "Send a completion ping?"
+        description: 'Send a completion ping?'
         default: false
       TICKERS:
         type: string
-        description: "Optional override list (comma/space/semicolon/pipe separated)"
-        default: ""
+        description: 'Optional override list (comma/space/semicolon/pipe separated)'
+        default: ''
       PROFILE:
         type: choice
-        description: "Preset"
+        description: 'Preset'
         options:
           - balanced (core)
           - conservative (strict)
@@ -41,7 +40,7 @@ on:
         default: balanced (core)
       DEBUG_DETAIL:
         type: choice
-        description: "Include per-ticker gate flags & bottlenecks in the output?"
+        description: 'Include per-ticker gate flags & bottlenecks in the output?'
         options: [false, true]
         default: false
       ADVANCED_JSON:
@@ -53,7 +52,7 @@ on:
            "REGIME_DOWNGRADE_TO_WATCH":true,"MIN_20D_DOLLAR_VOL":5000000,
            "VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"BUY_LOWER_BAND_ATR_MULT":0.5,
            "BUY_UPPER_BAND_ATR_MULT":0.25,"MIN_RR":1.5,"DIV_MIN":2}
-        default: ""
+        default: ''
 
 jobs:
   scan:
@@ -61,11 +60,11 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
-      CADENCE_MIN: "55"      # <<< set your desired cadence (minutes) from 09:30 ET
-      TOLERANCE_MIN: "3"     # allowed drift around each tick
+      CADENCE_MIN: '90'   # <<< change to 50/60/etc as desired
+      TOLERANCE_MIN: '3'
 
     steps:
-      # ---------- HARD GATE (runs first, cheap) ----------
+      # ---------- HARD GATE ----------
       - name: Gate cadence (sets output ok=yes|no)
         id: gate
         shell: bash
@@ -81,15 +80,14 @@ jobs:
           cad=${CADENCE_MIN:-90}
           tol=${TOLERANCE_MIN:-3}
 
-          # Only enforce hours & cadence if not explicitly allowed to run AH.
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
               ok=no; reason="weekend"
             elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
               ok=no; reason="outside RTH"
             else
-              delta=$(( mins - open ))                     # minutes since 09:30
-              rem=$(( ( (delta % cad) + cad ) % cad ))     # distance to next tick
+              delta=$(( mins - open ))
+              rem=$(( ( (delta % cad) + cad ) % cad ))
               if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
                 ok=yes
               else
@@ -108,7 +106,9 @@ jobs:
 
       - name: Skip (off cadence / outside hours)
         if: steps.gate.outputs.ok != 'yes'
-        run: echo "Skipping run: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
+        run: |
+          echo "Skipping run: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
+
 
 
       # ---------- HEAVY STEPS (only when gate passes) ----------
