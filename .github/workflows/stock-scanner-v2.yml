@@ -5,7 +5,6 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  # Reduce cron noise; gate controls the true cadence.
   schedule:
     - cron: '*/10 13-21 * * 1-5'
   workflow_dispatch:
@@ -33,10 +32,7 @@ on:
       PROFILE:
         type: choice
         description: 'Preset'
-        options:
-          - balanced (core)
-          - conservative (strict)
-          - aggressive (loose)
+        options: [balanced (core), conservative (strict), aggressive (loose)]
         default: balanced (core)
       DEBUG_DETAIL:
         type: choice
@@ -45,13 +41,7 @@ on:
         default: false
       ADVANCED_JSON:
         type: string
-        description: >
-          Optional overrides as JSON. Any keys here replace the preset values.
-          Example:
-          {"ENABLE_4H":true,"ENFORCE_4H_ANCHORED_VWAP":true,"REGIME_SYMBOL":"SPY",
-           "REGIME_DOWNGRADE_TO_WATCH":true,"MIN_20D_DOLLAR_VOL":5000000,
-           "VOL_UP_LOOKBACK":10,"VOL_UP_MULT":1.2,"BUY_LOWER_BAND_ATR_MULT":0.5,
-           "BUY_UPPER_BAND_ATR_MULT":0.25,"MIN_RR":1.5,"DIV_MIN":2}
+        description: 'Optional overrides as JSON'
         default: ''
 
 jobs:
@@ -60,11 +50,10 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'   # <<< change to 50/60/etc as desired
+      CADENCE_MIN: '55'
       TOLERANCE_MIN: '3'
 
     steps:
-      # ---------- HARD GATE ----------
       - name: Gate cadence (sets output ok=yes|no)
         id: gate
         shell: bash
@@ -75,9 +64,9 @@ jobs:
           hh=$(TZ=America/New_York date +%H)
           mm=$(TZ=America/New_York date +%M)
           mins=$((10#$hh*60 + 10#$mm))
-          open=$((9*60 + 30))   # 09:30
-          close=$((16*60))      # 16:00
-          cad=${CADENCE_MIN:-90}
+          open=$((9*60 + 30))
+          close=$((16*60))
+          cad=${CADENCE_MIN:-55}        # <- match your env default
           tol=${TOLERANCE_MIN:-3}
 
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
@@ -109,9 +98,7 @@ jobs:
         run: |
           echo "Skipping run: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
 
-
-
-      # ---------- HEAVY STEPS (only when gate passes) ----------
+      # Heavy steps (only when gate passes)
       - name: Checkout
         if: steps.gate.outputs.ok == 'yes'
         uses: actions/checkout@v4
@@ -154,9 +141,9 @@ jobs:
           restore-keys: |
             scanner-cache-${{ runner.os }}-
 
-
-      # ---- Build PRESET from PROFILE and merge ADVANCED_JSON, then export to env ----
+      # ✅ Add the guard here (you were missing it)
       - name: Expand PROFILE/ADVANCED_JSON → env
+        if: steps.gate.outputs.ok == 'yes'
         shell: bash
         env:
           PROFILE: ${{ inputs.PROFILE }}
@@ -167,30 +154,21 @@ jobs:
           import os, json, sys
           profile = (os.environ.get("PROFILE","balanced (core)") or "balanced (core)").strip().lower()
           presets = {
-            "balanced (core)": {
-              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
+            "balanced (core)": {"ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
-              "MIN_20D_DOLLAR_VOL": 5_000_000,
-              "VOL_UP_LOOKBACK": 10, "VOL_UP_MULT": 1.2,
+              "MIN_20D_DOLLAR_VOL": 5_000_000, "VOL_UP_LOOKBACK": 10, "VOL_UP_MULT": 1.2,
               "BUY_LOWER_BAND_ATR_MULT": 0.5, "BUY_UPPER_BAND_ATR_MULT": 0.25,
-              "MIN_RR": 1.5, "DIV_MIN": 2
-            },
-            "conservative (strict)": {
-              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
+              "MIN_RR": 1.5, "DIV_MIN": 2},
+            "conservative (strict)": {"ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
-              "MIN_20D_DOLLAR_VOL": 10_000_000,
-              "VOL_UP_LOOKBACK": 12, "VOL_UP_MULT": 1.4,
+              "MIN_20D_DOLLAR_VOL": 10_000_000, "VOL_UP_LOOKBACK": 12, "VOL_UP_MULT": 1.4,
               "BUY_LOWER_BAND_ATR_MULT": 0.75, "BUY_UPPER_BAND_ATR_MULT": 0.5,
-              "MIN_RR": 2.0, "DIV_MIN": 3
-            },
-            "aggressive (loose)": {
-              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": False,
+              "MIN_RR": 2.0, "DIV_MIN": 3},
+            "aggressive (loose)": {"ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": False,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": False,
-              "MIN_20D_DOLLAR_VOL": 2_000_000,
-              "VOL_UP_LOOKBACK": 8, "VOL_UP_MULT": 1.0,
+              "MIN_20D_DOLLAR_VOL": 2_000_000, "VOL_UP_LOOKBACK": 8, "VOL_UP_MULT": 1.0,
               "BUY_LOWER_BAND_ATR_MULT": 0.4, "BUY_UPPER_BAND_ATR_MULT": 0.2,
-              "MIN_RR": 1.2, "DIV_MIN": 1
-            }
+              "MIN_RR": 1.2, "DIV_MIN": 1}
           }
           cfg = dict(presets.get(profile, presets["balanced (core)"]))
           raw = (os.environ.get("ADVANCED_JSON","") or "").strip()
@@ -203,35 +181,23 @@ jobs:
               print("Invalid ADVANCED_JSON:", e)
               sys.exit(1)
 
-          mapping = {
-            "ENABLE_4H": "IDE_ENABLE_4H",
-            "ENFORCE_4H_ANCHORED_VWAP": "ENFORCE_4H_ANCHORED_VWAP",
-            "REGIME_SYMBOL": "REGIME_SYMBOL",
-            "REGIME_DOWNGRADE_TO_WATCH": "REGIME_DOWNGRADE_TO_WATCH",
-            "MIN_20D_DOLLAR_VOL": "MIN_20D_DOLLAR_VOL",
-            "VOL_UP_LOOKBACK": "VOL_UP_LOOKBACK",
-            "VOL_UP_MULT": "VOL_UP_MULT",
-            "BUY_LOWER_BAND_ATR_MULT": "BUY_LOWER_BAND_ATR_MULT",
-            "BUY_UPPER_BAND_ATR_MULT": "BUY_UPPER_BAND_ATR_MULT",
-            "MIN_RR": "MIN_RR",
-            "DIV_MIN": "DIV_MIN",
-          }
-
+          mapping = {"ENABLE_4H":"IDE_ENABLE_4H","ENFORCE_4H_ANCHORED_VWAP":"ENFORCE_4H_ANCHORED_VWAP",
+                     "REGIME_SYMBOL":"REGIME_SYMBOL","REGIME_DOWNGRADE_TO_WATCH":"REGIME_DOWNGRADE_TO_WATCH",
+                     "MIN_20D_DOLLAR_VOL":"MIN_20D_DOLLAR_VOL","VOL_UP_LOOKBACK":"VOL_UP_LOOKBACK",
+                     "VOL_UP_MULT":"VOL_UP_MULT","BUY_LOWER_BAND_ATR_MULT":"BUY_LOWER_BAND_ATR_MULT",
+                     "BUY_UPPER_BAND_ATR_MULT":"BUY_UPPER_BAND_ATR_MULT","MIN_RR":"MIN_RR","DIV_MIN":"DIV_MIN"}
           def as_bool(v): return "true" if str(v).lower() in ("1","true","yes","on","y") else "false"
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
             for k, dst in mapping.items():
               if k in cfg:
                 v = cfg[k]
-                if isinstance(v, bool):
-                  v = as_bool(v)
+                if isinstance(v, bool): v = as_bool(v)
                 f.write(f"{dst}={v}\n")
             f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
-
           print("Effective profile:", profile)
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
-
 
       - name: Run scanner
         if: steps.gate.outputs.ok == 'yes'
@@ -240,7 +206,6 @@ jobs:
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS:  ${{ secrets.TELEGRAM_CHAT_IDS }}
           MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
-          # Manual runs: respect UI toggle; Scheduled runs: ALWAYS true
           ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
             && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
             || 'true' }}
@@ -267,8 +232,6 @@ jobs:
         with:
           path: .scanner_cache
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
-
-
 
 ## Old version V2
 # name: Stock Scanner V2 (Telegram)
