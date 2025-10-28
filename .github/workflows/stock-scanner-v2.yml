@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
-      CADENCE_MIN: '90'   # <<< change to 50/60/etc as desired
+      CADENCE_MIN: '55'   # <<< change to 50/60/etc as desired
       TOLERANCE_MIN: '3'
 
     steps:
