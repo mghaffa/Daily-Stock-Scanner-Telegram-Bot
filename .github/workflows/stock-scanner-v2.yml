@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'
+      CADENCE_MIN: '45'
       TOLERANCE_MIN: '3'
 
     steps:
@@ -66,7 +66,7 @@ jobs:
           mins=$((10#$hh*60 + 10#$mm))
           open=$((9*60 + 30))
           close=$((16*60))
-          cad=${CADENCE_MIN:-55}        # <- match your env default
+          cad=${CADENCE_MIN:-45}        # <- match your env default
           tol=${TOLERANCE_MIN:-3}
 
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
