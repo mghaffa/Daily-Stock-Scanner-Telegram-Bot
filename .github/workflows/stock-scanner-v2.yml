@@ -107,8 +107,8 @@ jobs:
           echo "Gate result: ok=$ok; $reason; NY time=$HM"
 
       - name: Skip (off cadence / outside hours)
-        if: steps.gate.outputs.ok != 'yes'
-        run: echo "Skipping run: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
+          if: steps.gate.outputs.ok != 'yes'
+          run: echo "Skipping run: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
 
       # ---------- HEAVY STEPS (only when gate passes) ----------
       - name: Checkout
