@@ -54,7 +54,7 @@ TELEGRAM_PING_ON_START = os.getenv("TELEGRAM_PING_ON_START", "false").lower() ==
 TELEGRAM_PING_ON_END   = os.getenv("TELEGRAM_PING_ON_END", "false").lower() == "true"
 
 # --------------------------- Scanner Config --------------------------- #
-RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","googl","msft","klac","ibm","aapl","tqqq","intc","bulz","cost","tsla","meta","now","nflx","hims","ntra","ddog","tsm","mu","crm","tem","rklb","crwd","uvxy","intc","unh","jpm","abt","bynd","race","sofi", "gld", "gldm","shny"]
+RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","googl","msft","klac","ibm","aapl","tqqq","intc","bulz","cost","tsla","meta","now","nflx","hims","ntra","ddog","tsm","mu","crm","tem","rklb","crwd","uvxy","intc","unh","jpm","abt","bynd","race","sofi", "gld", "gldm","shny","msci","ccj"]
 TICKER_MAP = {"google":"GOOGL"}
 
 # Allow override via env TICKERS (comma/space separated)
@@ -673,6 +673,7 @@ if __name__ == "__main__":
         print("[done] Market closed — no scanning (set MARKET_ONLY=false or use the workflow toggle).", flush=True)
         sys.exit(0)
     main_loop()
+
 
 
 
