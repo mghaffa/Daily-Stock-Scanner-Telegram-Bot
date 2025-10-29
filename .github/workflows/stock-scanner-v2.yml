@@ -6,7 +6,7 @@ concurrency:
 
 on:
   schedule:
-    - cron: '*/10 13-21 * * 1-5'
+    - cron: '*/10 * * * 1-5'
   workflow_dispatch:
     inputs:
       RUN_AFTER_HOURS:
@@ -52,6 +52,9 @@ jobs:
       TZ: America/New_York
       CADENCE_MIN: '15'
       TOLERANCE_MIN: '5'
+      RUN_AFTER_HOURS: ${{ github.event_name == 'schedule'
+        && 'true'
+        || (inputs.RUN_AFTER_HOURS && 'true' || 'false') }}
 
     steps:
       - name: Gate cadence (sets output ok=yes|no)
@@ -69,7 +72,7 @@ jobs:
           cad=${CADENCE_MIN:-15}        # <- match your env default
           tol=${TOLERANCE_MIN:-5}
 
-          if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
+          if [ "${RUN_AFTER_HOURS}" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
               ok=no; reason="weekend"
             elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
