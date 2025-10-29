@@ -13,7 +13,7 @@ on:
       RUN_AFTER_HOURS:
         type: boolean
         description: 'Allow running outside US market hours?'
-        default: false
+        default: true
       ALWAYS_NOTIFY:
         type: boolean
         description: 'Send a summary even if there are no NEW alerts?'
