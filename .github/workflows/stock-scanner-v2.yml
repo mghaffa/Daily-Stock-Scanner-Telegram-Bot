@@ -1,4 +1,4 @@
-name: Stock Scanner V2 (Telegram, DIAGNOSTIC)
+name: Stock Scanner V2 (Telegram)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -8,6 +8,41 @@ on:
   schedule:
     - cron: '*/10 13-21 * * 1-5'
   workflow_dispatch:
+    inputs:
+      RUN_AFTER_HOURS:
+        type: boolean
+        description: 'Allow running outside US market hours?'
+        default: true
+      ALWAYS_NOTIFY:
+        type: boolean
+        description: 'Send a summary even if there are no NEW alerts?'
+        default: true
+      PING_ON_START:
+        type: boolean
+        description: 'Send a startup ping?'
+        default: false
+      PING_ON_END:
+        type: boolean
+        description: 'Send a completion ping?'
+        default: false
+      TICKERS:
+        type: string
+        description: 'Optional override list (comma/space/semicolon/pipe separated)'
+        default: ''
+      PROFILE:
+        type: choice
+        description: 'Preset'
+        options: [balanced (core), conservative (strict), aggressive (loose)]
+        default: balanced (core)
+      DEBUG_DETAIL:
+        type: choice
+        description: 'Include per-ticker gate flags & bottlenecks in the output?'
+        options: [false, true]
+        default: false
+      ADVANCED_JSON:
+        type: string
+        description: 'Optional overrides as JSON'
+        default: ''
 
 jobs:
   scan:
@@ -16,7 +51,7 @@ jobs:
     env:
       TZ: America/New_York
       CADENCE_MIN: '15'
-      TOLERANCE_MIN: '3'
+      TOLERANCE_MIN: '5'
 
     steps:
       - name: Gate cadence (sets output ok=yes|no)
@@ -31,8 +66,8 @@ jobs:
           mins=$((10#$hh*60 + 10#$mm))
           open=$((9*60 + 30))
           close=$((16*60))
-          cad=${CADENCE_MIN:-15}
-          tol=${TOLERANCE_MIN:-3}
+          cad=${CADENCE_MIN:-15}        # <- match your env default
+          tol=${TOLERANCE_MIN:-5}
 
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
@@ -56,19 +91,14 @@ jobs:
             echo "ok=$ok"
             echo "reason=$reason"
           } >> "$GITHUB_OUTPUT"
-          echo "Gate result: ok=$ok; $reason; NY time=$HM (mins=$mins rem=$rem cad=$cad tol=$tol)"
+          echo "Gate result: ok=$ok; $reason; NY time=$HM"
 
       - name: Skip (off cadence / outside hours)
         if: steps.gate.outputs.ok != 'yes'
-        run: echo "Skipping run: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
-
-      - name: DEBUG – pre-scan Telegram ping
-        if: steps.gate.outputs.ok == 'yes'
         run: |
-          curl -sS -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            --data-urlencode text="(debug) gate=PASS @ ${{ steps.gate.outputs.now }} NY — starting scan"
+          echo "Skipping run: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
 
+      # Heavy steps (only when gate passes)
       - name: Checkout
         if: steps.gate.outputs.ok == 'yes'
         uses: actions/checkout@v4
@@ -110,7 +140,6 @@ jobs:
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
           restore-keys: |
             scanner-cache-${{ runner.os }}-
-
 
       # ✅ Add the guard here (you were missing it)
       - name: Expand PROFILE/ADVANCED_JSON → env
@@ -194,9 +223,8 @@ jobs:
         with:
           name: scanner-output
           path: |
-            scanner_dual_tf_vp_dip5.csv
+            scanner_dual_tf_vp_dip4.csv
             .scanner_cache/alerts_dip4_seen.json
-            .scanner_cache/alerts_dip5_seen.json
 
       - name: Save scanner cache
         if: always() && steps.gate.outputs.ok == 'yes' && steps.scancache.outputs.cache-hit != 'true'
