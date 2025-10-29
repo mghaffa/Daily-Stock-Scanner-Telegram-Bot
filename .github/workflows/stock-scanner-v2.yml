@@ -1,10 +1,13 @@
 name: Stock Scanner V2 (Telegram)
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false  # Changed to false to avoid canceling long-running scans, matching V3 behavior
+
 on:
   schedule:
     - cron: '*/5 13-21 * * 1-5'  # Every 5 min during UTC window covering US RTH (EDT/EST)
+ 
   workflow_dispatch:
     inputs:
       RUN_AFTER_HOURS:
@@ -47,7 +50,7 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
-      CADENCE_MIN: '50'  # Updated to 50 min as requested
+      CADENCE_MIN: '40'  # Updated to 50 min as requested
       TOLERANCE_MIN: '5'
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
         && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
@@ -65,7 +68,7 @@ jobs:
           mins=$((10#$hh*60 + 10#$mm))
           open=$((9*60 + 30))
           close=$((16*60))
-          cad=${CADENCE_MIN:-50}  # Updated default to match env; ensures 50 if unset
+          cad=${CADENCE_MIN:-40}  # Updated default to match env; ensures 50 if unset
           tol=${TOLERANCE_MIN:-5}
           run_after_hours="${RUN_AFTER_HOURS}"  # Local var for bash access to env/context
           if [ "$run_after_hours" != "true" ]; then
