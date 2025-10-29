@@ -53,8 +53,9 @@ jobs:
       CADENCE_MIN: '15'
       TOLERANCE_MIN: '5'
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
-        && 'true'
-        || (inputs.RUN_AFTER_HOURS && 'true' || 'false') }}
+        && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
+        || (vars.RUN_AFTER_HOURS || 'false') }}
+
 
     steps:
       - name: Gate cadence (sets output ok=yes|no)
