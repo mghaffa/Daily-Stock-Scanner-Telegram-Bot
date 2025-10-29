@@ -104,8 +104,8 @@ jobs:
           mins=$((10#$hh*60 + 10#$mm))
           open=$((9*60 + 30))   # 09:30
           close=$((16*60))      # 16:00
-          cad=${CADENCE_MIN:-45}
-          tol=${TOLERANCE_MIN:-3}
+          cad=${CADENCE_MIN:-55}
+          tol=${TOLERANCE_MIN:-5}
 
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
