@@ -12,7 +12,7 @@ on:
       RUN_AFTER_HOURS:
         type: boolean
         description: 'Allow running outside US market hours?'
-        default: false
+        default: true
       ALWAYS_NOTIFY:
         type: boolean
         description: 'Send a summary even if there are no NEW alerts?'
@@ -50,8 +50,8 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
-      CADENCE_MIN: '45'
-      TOLERANCE_MIN: '3'
+      CADENCE_MIN: '15'
+      TOLERANCE_MIN: '5'
 
     steps:
       - name: Gate cadence (sets output ok=yes|no)
@@ -66,8 +66,8 @@ jobs:
           mins=$((10#$hh*60 + 10#$mm))
           open=$((9*60 + 30))
           close=$((16*60))
-          cad=${CADENCE_MIN:-45}        # <- match your env default
-          tol=${TOLERANCE_MIN:-3}
+          cad=${CADENCE_MIN:-15}        # <- match your env default
+          tol=${TOLERANCE_MIN:-5}
 
           if [ "${{ inputs.RUN_AFTER_HOURS }}" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
