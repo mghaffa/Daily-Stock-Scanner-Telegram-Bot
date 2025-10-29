@@ -6,8 +6,8 @@ concurrency:
 
 on:
   schedule:
-    - cron: '*/5 13-21 * * 1-5'  # Every 5 min during UTC window covering US RTH (EDT/EST)
- 
+    #- cron: '*/5 13-21 * * 1-5'  # Every 5 min during UTC window covering US RTH (EDT/EST)
+    - cron: '*/5 * * * 1-5'
   workflow_dispatch:
     inputs:
       RUN_AFTER_HOURS:
@@ -52,9 +52,12 @@ jobs:
       TZ: America/New_York
       CADENCE_MIN: '55'  # Updated to 50 min as requested
       TOLERANCE_MIN: '5'
-      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
-        && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
-        || (vars.RUN_AFTER_HOURS || 'false') }}
+      # RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
+      #   && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
+      #   || (vars.RUN_AFTER_HOURS || 'false') }}
+      
+      RUN_AFTER_HOURS: 'true'
+
     steps:
       - name: Gate cadence (sets output ok=yes|no)
         id: gate
