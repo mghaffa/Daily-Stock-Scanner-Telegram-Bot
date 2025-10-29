@@ -68,7 +68,7 @@ jobs:
           mins=$((10#$hh*60 + 10#$mm))
           open=$((9*60 + 30))
           close=$((16*60))
-          cad=${CADENCE_MIN:-40}  # Updated default to match env; ensures 50 if unset
+          cad=${CADENCE_MIN:-55}  # Updated default to match env; ensures 50 if unset
           tol=${TOLERANCE_MIN:-5}
           run_after_hours="${RUN_AFTER_HOURS}"  # Local var for bash access to env/context
           if [ "$run_after_hours" != "true" ]; then
