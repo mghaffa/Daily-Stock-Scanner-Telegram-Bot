@@ -66,7 +66,7 @@ TELEGRAM_PING_ON_END   = _env_bool("TELEGRAM_PING_ON_END", False)
 # Universe
 RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","googl","msft","klac","ibm","aapl",
                "tqqq","intc","bulz","cost","tsla","meta","now","nflx","hims","ntra","ddog","tsm",
-               "mu","crm","tem","rklb","crwd","uvxy","unh","jpm","abt","bynd","race","sofi","dell","upst","sofi","gld", "gldm","shny","msci","ccj"]
+               "mu","crm","tem","rklb","crwd","uvxy","unh","jpm","abt","bynd","race","sofi","dell","upst","sofi","gld", "gldm","shny","msci","ccj","shop"]
 ALIAS = {"google":"GOOGL"}  # small typo map
 
 # --- Preset-driven risk/filters (names match YAML mapping) ---
