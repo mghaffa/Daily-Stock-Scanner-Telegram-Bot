@@ -52,7 +52,7 @@ jobs:
       TZ: America/New_York
       CADENCE_MIN: '15'
       TOLERANCE_MIN: '5'
-      RUN_AFTER_HOURS: ${{ github.event_name == 'schedule'
+      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
         && 'true'
         || (inputs.RUN_AFTER_HOURS && 'true' || 'false') }}
 
@@ -208,7 +208,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS:  ${{ secrets.TELEGRAM_CHAT_IDS }}
-          MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
+          MARKET_ONLY: ${{ env.RUN_AFTER_HOURS == 'true' && 'false' || 'true' }}
           ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
             && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
             || 'true' }}
