@@ -56,7 +56,11 @@ jobs:
       TOLERANCE_MIN: '5'
       # For schedule: use repo/org variable RUN_AFTER_HOURS if set; else false.
       # For manual dispatch: use the input.
-      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch' && (inputs.RUN_AFTER_HOURS && 'true' || 'false') || (vars.RUN_AFTER_HOURS || 'false') }}
+      #RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch' && (inputs.RUN_AFTER_HOURS && 'true' || 'false') || (vars.RUN_AFTER_HOURS || 'false') }}
+      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
+        && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
+        || (vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || 'false') }}
+    
     # In case
     steps:
       - name: Checkout
@@ -86,7 +90,6 @@ jobs:
           ok=yes
           reason=""
 
-
           dow=$(TZ=America/New_York date +%u)
           hh=$(TZ=America/New_York date +%H)
           mm=$(TZ=America/New_York date +%M)
@@ -97,9 +100,10 @@ jobs:
 
           cad=${CADENCE_MIN:-55}
           tol=${TOLERANCE_MIN:-5}
+          echo "DEBUG RUN_AFTER_HOURS='$RUN_AFTER_HOURS'"
           #run_after_hours="${{ inputs.RUN_AFTER_HOURS }}"
           run_after_hours="${RUN_AFTER_HOURS}"
-
+          run_after_hours="${run_after_hours,,}"   # lower-case normalize
           if [ "$run_after_hours" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
               ok=no; reason="weekend"
