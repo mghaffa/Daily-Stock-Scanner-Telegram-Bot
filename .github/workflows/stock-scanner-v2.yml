@@ -52,7 +52,7 @@ jobs:
     env:
       TZ: America/New_York
       CADENCE_MIN: '55'
-      TOLERANCE_MIN: '5'
+      TOLERANCE_MIN: '15'
       # For schedule: prefer repo/org variable; fall back to secret; default false.
       # For manual dispatch: use the input.
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
