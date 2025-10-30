@@ -48,54 +48,110 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'  # Updated to 50 min as requested
+      CADENCE_MIN: '55'
       TOLERANCE_MIN: '5'
-      # RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
-      #   && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
-      #   || (vars.RUN_AFTER_HOURS || 'false') }}
+      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
+        && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
+        || (vars.RUN_AFTER_HOURS || 'false') }}
+
+    # env:
+    #   TZ: America/New_York
+    #   CADENCE_MIN: '55'  # Updated to 50 min as requested
+    #   TOLERANCE_MIN: '5'
+    #   # RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
+    #   #   && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
+    #   #   || (vars.RUN_AFTER_HOURS || 'false') }}
       
-      RUN_AFTER_HOURS: 'true'
+    #   RUN_AFTER_HOURS: 'true'
 
     steps:
-      - name: Gate cadence (sets output ok=yes|no)
-        id: gate
-        shell: bash
-        run: |
-          ok=yes
-          reason=""
-          dow=$(TZ=America/New_York date +%u)
-          hh=$(TZ=America/New_York date +%H)
-          mm=$(TZ=America/New_York date +%M)
-          mins=$((10#$hh*60 + 10#$mm))
-          open=$((9*60 + 30))
-          close=$((16*60))
-          cad=${CADENCE_MIN:-55}  # Updated default to match env; ensures 50 if unset
-          tol=${TOLERANCE_MIN:-5}
-          run_after_hours="${RUN_AFTER_HOURS}"  # Local var for bash access to env/context
-          if [ "$run_after_hours" != "true" ]; then
-            if [ "$dow" -ge 6 ]; then
-              ok=no; reason="weekend"
-            elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
-              ok=no; reason="outside RTH"
-            else
-              delta=$(( mins - open ))
-              rem=$(( ( (delta % cad) + cad ) % cad ))
-              if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
-                ok=yes
-              else
-                ok=no; reason="off cadence (rem=$rem tol=$tol)"
-              fi
-            fi
+
+    - name: Gate cadence (sets outputs ok=yes|no, mode=scan|full)
+      id: gate
+      shell: bash
+      run: |
+        ok=yes
+        reason=""
+        mode=scan
+    
+        dow=$(TZ=America/New_York date +%u)
+        hh=$(TZ=America/New_York date +%H)
+        mm=$(TZ=America/New_York date +%M)
+        mins=$((10#$hh*60 + 10#$mm))
+    
+        open=$((9*60 + 30))
+        close=$((16*60))
+    
+        cad=${CADENCE_MIN:-55}
+        tol=${TOLERANCE_MIN:-5}
+        run_after_hours="${RUN_AFTER_HOURS}"
+    
+        # Decide full cadence relative to 09:30
+        delta=$(( mins - open ))
+        # safe modulo for negatives
+        rem=$(( ( (delta % cad) + cad ) % cad ))
+        if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+          mode=full
+        fi
+    
+        # If after-hours runs are NOT allowed, block off-hours and weekends
+        if [ "$run_after_hours" != "true" ]; then
+          if [ "$dow" -ge 6 ]; then
+            ok=no; reason="weekend"
+          elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
+            ok=no; reason="outside RTH"
           fi
-          HM=$(TZ=America/New_York date +'%H:%M')
-          {
-            echo "now=$HM"
-            echo "ok=$ok"
-            echo "reason=$reason"
-          } >> "$GITHUB_OUTPUT"
-          echo "Gate result: ok=$ok; $reason; NY time=$HM"
+        fi
+    
+        HM=$(TZ=America/New_York date +'%H:%M')
+        {
+          echo "now=$HM"
+          echo "ok=$ok"
+          echo "mode=$mode"
+          echo "reason=$reason"
+        } >> "$GITHUB_OUTPUT"
+        echo "Gate: ok=$ok mode=$mode reason='$reason' NY time=$HM"
+
+      # - name: Gate cadence (sets output ok=yes|no)
+      #   id: gate
+      #   shell: bash
+      #   run: |
+      #     ok=yes
+      #     reason=""
+      #     dow=$(TZ=America/New_York date +%u)
+      #     hh=$(TZ=America/New_York date +%H)
+      #     mm=$(TZ=America/New_York date +%M)
+      #     mins=$((10#$hh*60 + 10#$mm))
+      #     open=$((9*60 + 30))
+      #     close=$((16*60))
+      #     cad=${CADENCE_MIN:-55}  # Updated default to match env; ensures 50 if unset
+      #     tol=${TOLERANCE_MIN:-5}
+      #     run_after_hours="${RUN_AFTER_HOURS}"  # Local var for bash access to env/context
+      #     if [ "$run_after_hours" != "true" ]; then
+      #       if [ "$dow" -ge 6 ]; then
+      #         ok=no; reason="weekend"
+      #       elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
+      #         ok=no; reason="outside RTH"
+      #       else
+      #         delta=$(( mins - open ))
+      #         rem=$(( ( (delta % cad) + cad ) % cad ))
+      #         if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+      #           ok=yes
+      #         else
+      #           ok=no; reason="off cadence (rem=$rem tol=$tol)"
+      #         fi
+      #       fi
+      #     fi
+      #     HM=$(TZ=America/New_York date +'%H:%M')
+      #     {
+      #       echo "now=$HM"
+      #       echo "ok=$ok"
+      #       echo "reason=$reason"
+      #     } >> "$GITHUB_OUTPUT"
+      #     echo "Gate result: ok=$ok; $reason; NY time=$HM"
       - name: Skip (off cadence / outside hours)
         if: steps.gate.outputs.ok != 'yes' && github.event_name != 'workflow_dispatch'
         run: |
@@ -191,6 +247,7 @@ jobs:
           print("Effective profile:", profile)
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
+
       - name: Run scanner
         if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')
         env:
@@ -206,7 +263,9 @@ jobs:
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
           NOTIFY_PREFIX: "[Enhanced Version V2] "
+          FULL_RUN: ${{ steps.gate.outputs.mode == 'full' && 'true' || 'false' }}
         run: |
+          echo "FULL_RUN=$FULL_RUN"
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
       - name: Upload CSV + state as artifact
         if: ((steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')) || failure()
