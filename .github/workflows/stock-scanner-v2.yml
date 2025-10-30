@@ -64,6 +64,7 @@ jobs:
     # In case
     steps:
       - name: Checkout
+        if: steps.gate.outputs.ok == 'yes'
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
