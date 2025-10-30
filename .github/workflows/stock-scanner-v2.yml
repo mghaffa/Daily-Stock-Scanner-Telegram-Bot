@@ -105,7 +105,16 @@ jobs:
             ok=no; reason="outside RTH"
           fi
         fi
-    
+        
+        # NEW: If after-hours are allowed, only permit FULL runs after-hours
+        if [ "$run_after_hours" = "true" ]; then
+          if [ "$dow" -le 5 ] && { [ $mins -lt $open ] || [ $mins -ge $close ]; }; then
+            if [ "$mode" != "full" ]; then
+              ok=no; reason="after-hours non-full skipped"
+            fi
+          fi
+        fi
+
         HM=$(TZ=America/New_York date +'%H:%M')
         {
           echo "now=$HM"
