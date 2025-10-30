@@ -232,12 +232,11 @@ jobs:
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
 
-      - name: Run scanner
-        if: steps.gate.outputs.ok == 'yes'
-		#if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')#
-
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+	  - name: Run scanner
+	    if: steps.gate.outputs.ok == 'yes'
+	    # if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')
+	    env:
+	      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
     
