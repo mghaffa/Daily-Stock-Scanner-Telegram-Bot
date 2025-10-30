@@ -55,7 +55,6 @@ jobs:
       TOLERANCE_MIN: '5'
       # For schedule: prefer repo/org variable; fall back to secret; default false.
       # For manual dispatch: use the input.
-      #RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch' && (inputs.RUN_AFTER_HOURS && 'true' || 'false') || (vars.RUN_AFTER_HOURS || 'false') }}
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
         && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
         || (vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || 'false') }}
@@ -79,8 +78,7 @@ jobs:
 
           cad=${CADENCE_MIN:-55}
           tol=${TOLERANCE_MIN:-5}
-          echo "DEBUG RUN_AFTER_HOURS='$RUN_AFTER_HOURS'"
-          #run_after_hours="${{ inputs.RUN_AFTER_HOURS }}"
+          echo "DEBUG RUN_AFTER_HOURS='${RUN_AFTER_HOURS}'"
           run_after_hours="${RUN_AFTER_HOURS}"
           run_after_hours="${run_after_hours,,}"   # normalize to lowercase
 
@@ -118,13 +116,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Gate result: ok=$ok; $reason; NY time=$HM"
 
-
       - name: Skip (off cadence / outside hours)
         if: steps.gate.outputs.ok != 'yes'
         run: |
           echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
-
-
 
       # ---- Heavy steps guarded by the gate ----
       - name: Checkout
@@ -207,47 +202,32 @@ jobs:
             except Exception as e:
               print("Invalid ADVANCED_JSON:", e)
               sys.exit(1)
-          mapping = {
-            "ENABLE_4H":"IDE_ENABLE_4H",
-            "ENFORCE_4H_ANCHORED_VWAP":"ENFORCE_4H_ANCHORED_VWAP",
-            "REGIME_SYMBOL":"REGIME_SYMBOL",
-            "REGIME_DOWNGRADE_TO_WATCH":"REGIME_DOWNGRADE_TO_WATCH",
-            "MIN_20D_DOLLAR_VOL":"MIN_20D_DOLLAR_VOL",
-            "VOL_UP_LOOKBACK":"VOL_UP_LOOKBACK",
-            "VOL_UP_MULT":"VOL_UP_MULT",
-            "BUY_LOWER_BAND_ATR_MULT":"BUY_LOWER_BAND_ATR_MULT",
-            "BUY_UPPER_BAND_ATR_MULT":"BUY_UPPER_BAND_ATR_MULT",
-            "MIN_RR":"MIN_RR",
-            "DIV_MIN":"DIV_MIN"}
+          mapping = {"ENABLE_4H":"IDE_ENABLE_4H","ENFORCE_4H_ANCHORED_VWAP":"ENFORCE_4H_ANCHORED_VWAP",
+                     "REGIME_SYMBOL":"REGIME_SYMBOL","REGIME_DOWNGRADE_TO_WATCH":"REGIME_DOWNGRADE_TO_WATCH",
+                     "MIN_20D_DOLLAR_VOL":"MIN_20D_DOLLAR_VOL","VOL_UP_LOOKBACK":"VOL_UP_LOOKBACK",
+                     "VOL_UP_MULT":"VOL_UP_MULT","BUY_LOWER_BAND_ATR_MULT":"BUY_LOWER_BAND_ATR_MULT",
+                     "BUY_UPPER_BAND_ATR_MULT":"BUY_UPPER_BAND_ATR_MULT","MIN_RR":"MIN_RR","DIV_MIN":"DIV_MIN"}
           def as_bool(v): return "true" if str(v).lower() in ("1","true","yes","on","y") else "false"
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
             for k, dst in mapping.items():
               if k in cfg:
                 v = cfg[k]
-                if isinstance(v, bool):
-                  v = as_bool(v)
+                if isinstance(v, bool): v = as_bool(v)
                 f.write(f"{dst}={v}\n")
             f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
           print("Effective profile:", profile)
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
 
-	  - name: Run scanner
-	    if: steps.gate.outputs.ok == 'yes'
-	    # if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')
-	    env:
-	      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      - name: Run scanner
+        if: steps.gate.outputs.ok == 'yes'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-    
-          #MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
           MARKET_ONLY: ${{ env.RUN_AFTER_HOURS == 'true' && 'false' || 'true' }}
-
-          # Manual runs: respect the UI toggle; Scheduled runs: ALWAYS true
           ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
-            && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
-            || 'true' }}
-    
+            && (inputs.ALWAYS_NOTIFY && 'true' || 'false') || 'true' }}
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
@@ -255,9 +235,9 @@ jobs:
           NOTIFY_PREFIX: "[Enhanced Version V2] "
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
+
       - name: Upload CSV + state as artifact
         if: steps.gate.outputs.ok == 'yes' || failure()
-	#if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch') || failure()
         uses: actions/upload-artifact@v4
         with:
           name: scanner-output
@@ -267,7 +247,6 @@ jobs:
 
       - name: Save scanner cache
         if: steps.gate.outputs.ok == 'yes' && steps.scancache.outputs.cache-hit != 'true'
-	#if: ((steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')) && steps.scancache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .scanner_cache
