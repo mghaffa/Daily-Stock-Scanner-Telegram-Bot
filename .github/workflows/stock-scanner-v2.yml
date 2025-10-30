@@ -120,7 +120,9 @@ jobs:
 
       - name: Skip (off cadence / outside hours)
         if: steps.gate.outputs.ok != 'yes'
-        run: echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
+		run: |
+          echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
+
 
       # ---- Heavy steps guarded by the gate ----
       - name: Checkout
