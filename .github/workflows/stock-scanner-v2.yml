@@ -118,10 +118,12 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Gate result: ok=$ok; $reason; NY time=$HM"
 
+
       - name: Skip (off cadence / outside hours)
         if: steps.gate.outputs.ok != 'yes'
-		run: |
+        run: |
           echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
+
 
 
       # ---- Heavy steps guarded by the gate ----
