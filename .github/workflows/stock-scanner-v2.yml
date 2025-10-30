@@ -52,7 +52,7 @@ jobs:
 
     env:
       TZ: America/New_York
-      CADENCE_MIN: '35'
+      CADENCE_MIN: '55'
       TOLERANCE_MIN: '5'
       # For schedule: use repo/org variable RUN_AFTER_HOURS if set; else false.
       # For manual dispatch: use the input.
