@@ -12,7 +12,7 @@ on:
       RUN_AFTER_HOURS:
         type: boolean
         description: 'Allow running outside US market hours?'
-        default: true
+        default: false
       ALWAYS_NOTIFY:
         type: boolean
         description: 'Send a summary even if there are no NEW alerts?'
@@ -67,59 +67,57 @@ jobs:
         run: |
           ok=yes
           reason=""
-
+      
           dow=$(TZ=America/New_York date +%u)
           hh=$(TZ=America/New_York date +%H)
           mm=$(TZ=America/New_York date +%M)
           mins=$((10#$hh*60 + 10#$mm))
-
+      
           open=$((9*60 + 30))
           close=$((16*60))
-
+      
           cad=${CADENCE_MIN:-55}
           tol=${TOLERANCE_MIN:-5}
-          echo "DEBUG RUN_AFTER_HOURS='${RUN_AFTER_HOURS}'"
           run_after_hours="${RUN_AFTER_HOURS}"
-          run_after_hours="${run_after_hours,,}"   # normalize to lowercase
-
-          # If after-hours are NOT allowed: only RTH, cadence-gated
-          if [ "$run_after_hours" != "true" ]; then
-            if [ "$dow" -ge 6 ]; then
-              ok=no; reason="weekend"
-            elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
-              ok=no; reason="outside RTH"
+          run_after_hours="${run_after_hours,,}"   # lowercase normalize
+      
+          # Are we inside regular trading hours?
+          in_rth=no
+          if [ "$dow" -ge 1 ] && [ "$dow" -le 5 ] && [ $mins -ge $open ] && [ $mins -lt $close ]; then
+            in_rth=yes
+          fi
+      
+          # 1) Block weekends always
+          if [ "$dow" -ge 6 ]; then
+            ok=no; reason="weekend"
+          fi
+      
+          # 2) If outside RTH and after-hours not allowed, block
+          if [ "$ok" = "yes" ] && [ "$in_rth" = "no" ] && [ "$run_after_hours" != "true" ]; then
+            ok=no; reason="outside RTH"
+          fi
+      
+          # 3) Cadence gate applies in BOTH RTH and (if allowed) after-hours
+          if [ "$ok" = "yes" ]; then
+            delta=$(( mins - open ))                              # anchor cadence to 09:30 ET
+            rem=$(( ( (delta % cad) + cad ) % cad ))             # safe modulo
+            if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+              : # on cadence
             else
-              delta=$(( mins - open ))
-              rem=$(( ( (delta % cad) + cad ) % cad ))
-              if ! { [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; }; then
-                ok=no; reason="off cadence (rem=$rem tol=$tol)"
-              fi
+              ok=no; reason="off cadence (rem=$rem tol=$tol)"
             fi
           fi
-
-          # If after-hours ARE allowed: only cadence ticks outside RTH
-          if [ "$run_after_hours" = "true" ]; then
-            if [ "$dow" -le 5 ] && { [ $mins -lt $open ] || [ $mins -ge $close ]; }; then
-              delta=$(( mins - open ))
-              rem=$(( ( (delta % cad) + cad ) % cad ))
-              if ! { [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; }; then
-                ok=no; reason="after-hours non-cadence skipped (rem=$rem tol=$tol)"
-              fi
-            fi
-          fi
-
+      
           HM=$(TZ=America/New_York date +'%H:%M')
           {
             echo "now=$HM"
             echo "ok=$ok"
             echo "reason=$reason"
+            echo "in_rth=$in_rth"
+            echo "rem=${rem:-na}"
           } >> "$GITHUB_OUTPUT"
-          echo "Gate result: ok=$ok; $reason; NY time=$HM"
+          echo "Gate: ok=$ok in_rth=$in_rth rem=${rem:-na} cad=$cad tol=$tol reason='$reason' NY=$HM"
 
-      - name: Skip (off cadence / outside hours)
-        if: steps.gate.outputs.ok != 'yes'
-        run: |
-          echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
 
       # ---- Heavy steps guarded by the gate ----
       - name: Checkout
