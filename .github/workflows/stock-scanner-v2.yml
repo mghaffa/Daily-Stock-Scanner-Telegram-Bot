@@ -170,11 +170,18 @@ jobs:
             except Exception as e:
               print("Invalid ADVANCED_JSON:", e)
               sys.exit(1)
-          mapping = {"ENABLE_4H":"IDE_ENABLE_4H","ENFORCE_4H_ANCHORED_VWAP":"ENFORCE_4H_ANCHORED_VWAP",
-                     "REGIME_SYMBOL":"REGIME_SYMBOL","REGIME_DOWNGRADE_TO_WATCH":"REGIME_DOWNGRADE_TO_WATCH",
-                     "MIN_20D_DOLLAR_VOL":"MIN_20D_DOLLAR_VOL","VOL_UP_LOOKBACK":"VOL_UP_LOOKBACK",
-                     "VOL_UP_MULT":"VOL_UP_MULT","BUY_LOWER_BAND_ATR_MULT":"BUY_LOWER_BAND_ATR_MULT",
-                     "BUY_UPPER_BAND_ATR_MULT":"BUY_UPPER_BAND_ATR_MULT","MIN_RR":"MIN_RR","DIV_MIN":"DIV_MIN"}
+          mapping = {
+            "ENABLE_4H":"IDE_ENABLE_4H",
+            "ENFORCE_4H_ANCHORED_VWAP":"ENFORCE_4H_ANCHORED_VWAP",
+            "REGIME_SYMBOL":"REGIME_SYMBOL",
+            "REGIME_DOWNGRADE_TO_WATCH":"REGIME_DOWNGRADE_TO_WATCH",
+            "MIN_20D_DOLLAR_VOL":"MIN_20D_DOLLAR_VOL",
+            "VOL_UP_LOOKBACK":"VOL_UP_LOOKBACK",
+            "VOL_UP_MULT":"VOL_UP_MULT",
+            "BUY_LOWER_BAND_ATR_MULT":"BUY_LOWER_BAND_ATR_MULT",
+            "BUY_UPPER_BAND_ATR_MULT":"BUY_UPPER_BAND_ATR_MULT",
+            "MIN_RR":"MIN_RR",
+            "DIV_MIN":"DIV_MIN"}
           def as_bool(v): return "true" if str(v).lower() in ("1","true","yes","on","y") else "false"
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
             for k, dst in mapping.items():
