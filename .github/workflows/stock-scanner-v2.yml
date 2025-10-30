@@ -234,8 +234,6 @@ jobs:
 
       - name: Run scanner
         if: steps.gate.outputs.ok == 'yes'
-
-		 #if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')#
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
