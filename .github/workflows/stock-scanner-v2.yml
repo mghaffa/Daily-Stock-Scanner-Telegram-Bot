@@ -234,6 +234,8 @@ jobs:
 
       - name: Run scanner
         if: steps.gate.outputs.ok == 'yes'
+		#if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')#
+
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -254,7 +256,6 @@ jobs:
           NOTIFY_PREFIX: "[Enhanced Version V2] "
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
-
       - name: Upload CSV + state as artifact
         if: steps.gate.outputs.ok == 'yes' || failure()
 	#if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch') || failure()
