@@ -97,7 +97,9 @@ jobs:
 
           cad=${CADENCE_MIN:-55}
           tol=${TOLERANCE_MIN:-5}
-          run_after_hours="${{ inputs.RUN_AFTER_HOURS }}"
+          #run_after_hours="${{ inputs.RUN_AFTER_HOURS }}"
+          run_after_hours="${RUN_AFTER_HOURS}"
+
           if [ "$run_after_hours" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
               ok=no; reason="weekend"
