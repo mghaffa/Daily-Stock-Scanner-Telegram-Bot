@@ -86,8 +86,11 @@ jobs:
       - name: Gate cadence (sets outputs ok=yes|no, mode=scan|full)
         id: gate
         shell: bash
-        run: |
+        run: |      
           ok=yes
+          reason=""
+
+                    ok=yes
           reason=""
 
           dow=$(TZ=America/New_York date +%u)
@@ -104,6 +107,7 @@ jobs:
           #run_after_hours="${{ inputs.RUN_AFTER_HOURS }}"
           run_after_hours="${RUN_AFTER_HOURS}"
           run_after_hours="${run_after_hours,,}"   # lower-case normalize
+          # RTH-only gate when after-hours are not allowed
           if [ "$run_after_hours" != "true" ]; then
             if [ "$dow" -ge 6 ]; then
               ok=no; reason="weekend"
@@ -112,19 +116,34 @@ jobs:
             else
               delta=$(( mins - open ))
               rem=$(( ( (delta % cad) + cad ) % cad ))
-              if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
-                ok=yes
-              else
-                ok=no; reason="off cadence (rem=$rem tol=$tol)"
+              if ! { [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; }; then
+                          ok=yes
+                        else
+                          ok=no; reason="off cadence (rem=$rem tol=$tol)"
+                        fi
+                      fi
+                    fi
+          
+          # AFTER-HOURS cadence gate: only allow ticks near the cadence
+          if [ "$run_after_hours" = "true" ]; then
+            if [ "$dow" -le 5 ] && { [ $mins -lt $open ] || [ $mins -ge $close ]; }; then
+              delta=$(( mins - open ))
+              rem=$(( ( (delta % cad) + cad ) % cad ))
+              if ! { [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; }; then
+                ok=no; reason="after-hours non-cadence skipped (rem=$rem tol=$tol)"
               fi
             fi
           fi
-
+          
           HM=$(TZ=America/New_York date +'%H:%M')
-          echo "now=$HM" >> "$GITHUB_OUTPUT"
-          echo "ok=$ok" >> "$GITHUB_OUTPUT"
-          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          {
+            echo "now=$HM"
+            echo "ok=$ok"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
           echo "Gate result: ok=$ok; $reason; NY time=$HM"
+
+         
       - name: Compute week key
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
 
