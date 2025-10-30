@@ -208,8 +208,9 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
     
-          MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
-    
+          #MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
+          MARKET_ONLY: ${{ env.RUN_AFTER_HOURS == 'true' && 'false' || 'true' }}
+
           # Manual runs: respect the UI toggle; Scheduled runs: ALWAYS true
           ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
             && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
