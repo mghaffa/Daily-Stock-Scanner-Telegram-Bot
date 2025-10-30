@@ -57,7 +57,7 @@ jobs:
       # For schedule: use repo/org variable RUN_AFTER_HOURS if set; else false.
       # For manual dispatch: use the input.
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch' && (inputs.RUN_AFTER_HOURS && 'true' || 'false') || (vars.RUN_AFTER_HOURS || 'false') }}
-
+    # In case
     steps:
       - name: Checkout
         uses: actions/checkout@v4
