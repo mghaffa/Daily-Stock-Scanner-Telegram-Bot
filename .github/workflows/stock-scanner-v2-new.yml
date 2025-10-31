@@ -51,14 +51,23 @@ jobs:
 
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'   # strict minimum interval between successful runs
-      TOLERANCE_MIN: '4'  # small window for modulo alignment
-      RUN_AFTER_HOURS: ${{ vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || 'false' }}
+      CADENCE_MIN: '55'     # strict minimum minutes between successful runs
+      TOLERANCE_MIN: '4'    # small modulo window for clock-aligned ticks
+      RUN_AFTER_HOURS_DEFAULT: ${{ vars.RUN_AFTER_HOURS || 'false' }}
 
     steps:
-      - name: Expose dispatch input to env (overrides AH if manual)
-        id: expose_inputs
-        run: echo "RUN_AFTER_HOURS_INPUT=${{ github.event_name == 'workflow_dispatch' && inputs.RUN_AFTER_HOURS || '' }}" >> "$GITHUB_ENV"
+      # Make event context available in bash without complex expressions
+      - name: Expose context to env
+        run: |
+          echo "EVENT_IS_DISPATCH=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_ENV"
+          echo "INPUT_RUN_AFTER_HOURS=${{ inputs.RUN_AFTER_HOURS }}" >> "$GITHUB_ENV"
+          echo "INPUT_ALWAYS_NOTIFY=${{ inputs.ALWAYS_NOTIFY }}" >> "$GITHUB_ENV"
+          echo "INPUT_PING_ON_START=${{ inputs.PING_ON_START }}" >> "$GITHUB_ENV"
+          echo "INPUT_PING_ON_END=${{ inputs.PING_ON_END }}" >> "$GITHUB_ENV"
+          echo "INPUT_TICKERS=${{ inputs.TICKERS }}" >> "$GITHUB_ENV"
+          echo "INPUT_PROFILE=${{ inputs.PROFILE }}" >> "$GITHUB_ENV"
+          echo "INPUT_DEBUG_DETAIL=${{ inputs.DEBUG_DETAIL }}" >> "$GITHUB_ENV"
+          echo "INPUT_ADVANCED_JSON=${{ inputs.ADVANCED_JSON }}" >> "$GITHUB_ENV"
 
       - name: Restore cadence cache
         id: cadcache
@@ -80,42 +89,43 @@ jobs:
           ok=yes
           reason=""
 
-          # Choose after-hours flag: manual input (if present) beats job default
-          run_after_hours="${RUN_AFTER_HOURS_INPUT:-}"
-          if [ -z "${run_after_hours}" ]; then
-            run_after_hours="${RUN_AFTER_HOURS}"
+          # Effective after-hours flag:
+          # manual input (if dispatch) overrides repo/org default
+          run_after_hours="${INPUT_RUN_AFTER_HOURS:-}"
+          if [ "${EVENT_IS_DISPATCH}" != "true" ] || [ -z "${run_after_hours}" ]; then
+            run_after_hours="${RUN_AFTER_HOURS_DEFAULT}"
           fi
-          run_after_hours="${run_after_hours,,}"   # normalize
+          run_after_hours="${run_after_hours,,}"
 
           # Current NY time
-          dow=$(TZ=America/New_York date +%u)    # 1..7
+          dow=$(TZ=America/New_York date +%u)   # 1..7 (Mon..Sun)
           hh=$(TZ=America/New_York date +%H)
           mm=$(TZ=America/New_York date +%M)
           mins=$((10#$hh*60 + 10#$mm))
 
-          open=$((9*60 + 30))    # 09:30
-          close=$((16*60))       # 16:00
+          open=$((9*60 + 30))   # 09:30
+          close=$((16*60))      # 16:00
 
           cad=${CADENCE_MIN:-55}
           tol=${TOLERANCE_MIN:-4}
 
-          # In regular trading hours?
+          # RTH check
           in_rth=no
           if [ "$dow" -ge 1 ] && [ "$dow" -le 5 ] && [ $mins -ge $open ] && [ $mins -lt $close ]; then
             in_rth=yes
           fi
 
-          # 1) Block weekends always
+          # 1) Block weekends
           if [ "$dow" -ge 6 ]; then
             ok=no; reason="weekend"
           fi
 
-          # 2) Outside RTH and AH not allowed
+          # 2) Outside RTH and after-hours not allowed
           if [ "$ok" = "yes" ] && [ "$in_rth" = "no" ] && [ "$run_after_hours" != "true" ]; then
             ok=no; reason="outside RTH"
           fi
 
-          # 3) Modulo cadence (anchored to 09:30 ET) for predictability
+          # 3) Modulo cadence gate (anchored to 09:30 ET)
           if [ "$ok" = "yes" ]; then
             delta=$(( mins - open ))
             rem=$(( ( (delta % cad) + cad ) % cad ))
@@ -126,7 +136,7 @@ jobs:
             fi
           fi
 
-          # 4) STRICT minimum interval since last SUCCESS (≥ CADENCE_MIN)
+          # 4) STRICT minimum interval since last success (>= CADENCE_MIN)
           mkdir -p .cadence_cache
           last_path=".cadence_cache/last_run_epoch.txt"
           now_epoch=$(date -u +%s)
@@ -135,7 +145,6 @@ jobs:
           else
             last_epoch=0
           fi
-
           if [ "$ok" = "yes" ] && [ "$last_epoch" -gt 0 ]; then
             elapsed=$(( (now_epoch - last_epoch) / 60 ))
             if [ $elapsed -lt $cad ]; then
@@ -158,6 +167,7 @@ jobs:
         if: ${{ steps.gate.outputs.ok != 'yes' }}
         run: echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
 
+      # Heavy steps only when gate passes
       - name: Checkout
         if: ${{ steps.gate.outputs.ok == 'yes' }}
         uses: actions/checkout@v4
@@ -204,9 +214,9 @@ jobs:
         if: ${{ steps.gate.outputs.ok == 'yes' }}
         shell: bash
         env:
-          PROFILE: ${{ inputs.PROFILE }}
-          ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
-          DEBUG_DETAIL: ${{ inputs.DEBUG_DETAIL }}
+          PROFILE: ${{ env.INPUT_PROFILE }}
+          ADVANCED_JSON: ${{ env.INPUT_ADVANCED_JSON }}
+          DEBUG_DETAIL: ${{ env.INPUT_DEBUG_DETAIL }}
         run: |
           python - <<'PY'
           import os, json, sys
@@ -255,17 +265,36 @@ jobs:
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
 
+      - name: Derive runtime env flags
+        if: ${{ steps.gate.outputs.ok == 'yes' }}
+        run: |
+          # MARKET_ONLY: true during RTH only (unless AH allowed)
+          if [ "${{ steps.gate.outputs.run_after_hours }}" = "true" ]; then
+            echo "MARKET_ONLY=false" >> "$GITHUB_ENV"
+          else
+            echo "MARKET_ONLY=true" >> "$GITHUB_ENV"
+          fi
+          # ALWAYS_NOTIFY: default true; honor manual toggle if dispatch
+          if [ "${EVENT_IS_DISPATCH}" = "true" ]; then
+            if [ "${INPUT_ALWAYS_NOTIFY}" = "true" ]; then echo "ALWAYS_NOTIFY=true" >> "$GITHUB_ENV"; else echo "ALWAYS_NOTIFY=false" >> "$GITHUB_ENV"; fi
+          else
+            echo "ALWAYS_NOTIFY=true" >> "$GITHUB_ENV"
+          fi
+          echo "TELEGRAM_PING_ON_START=${INPUT_PING_ON_START:-false}" >> "$GITHUB_ENV"
+          echo "TELEGRAM_PING_ON_END=${INPUT_PING_ON_END:-false}" >> "$GITHUB_ENV"
+          echo "TICKERS=${INPUT_TICKERS}" >> "$GITHUB_ENV"
+
       - name: Run scanner
         if: ${{ steps.gate.outputs.ok == 'yes' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-          MARKET_ONLY: ${{ steps.gate.outputs.run_after_hours == 'true' && 'false' || 'true' }}
-          ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch' && (inputs.ALWAYS_NOTIFY && 'true' || 'false') || 'true' }}
-          TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
-          TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
-          TICKERS: ${{ inputs.TICKERS }}
+          MARKET_ONLY: ${{ env.MARKET_ONLY }}
+          ALWAYS_NOTIFY: ${{ env.ALWAYS_NOTIFY }}
+          TELEGRAM_PING_ON_START: ${{ env.TELEGRAM_PING_ON_START }}
+          TELEGRAM_PING_ON_END: ${{ env.TELEGRAM_PING_ON_END }}
+          TICKERS: ${{ env.TICKERS }}
           CACHE_DIR: .scanner_cache
           NOTIFY_PREFIX: "[Enhanced Version V2] "
         run: |
