@@ -51,7 +51,7 @@ jobs:
 
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'     # strict spacing target
+      CADENCE_MIN: '45'     # strict spacing target
       TOLERANCE_MIN: '4'    # keep small (2–4) so only one cron tick passes per window
       # For schedule: prefer repo/org variable; fall back to secret; default false.
       # For manual dispatch: use the input.
@@ -261,7 +261,7 @@ jobs:
           TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
-          NOTIFY_PREFIX: "[Enhanced Version V2] "
+          NOTIFY_PREFIX: "[Enhanced Version V2 - New] "
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
