@@ -36,7 +36,7 @@ on:
         default: 'balanced (core)'
       DEBUG_DETAIL:
         type: choice
-        description: 'Include per-ticker gate flags & bottlenecks in the output?'
+        description: 'Include per-ticker gate flags and bottlenecks in the output?'
         options: ['false', 'true']
         default: 'false'
       ADVANCED_JSON:
@@ -51,12 +51,11 @@ jobs:
 
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'     # strict minimum minutes between successful runs
-      TOLERANCE_MIN: '4'    # small modulo window around cadence tick
+      CADENCE_MIN: '55'      # strict minimum minutes between successful runs
+      TOLERANCE_MIN: '4'     # small modulo window around cadence tick
       RUN_AFTER_HOURS_DEFAULT: ${{ vars.RUN_AFTER_HOURS || 'false' }}
 
     steps:
-      # Expose context to env so we can read safely in bash
       - name: Expose context to env
         run: |
           echo "EVENT_IS_DISPATCH=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_ENV"
@@ -69,7 +68,6 @@ jobs:
           echo "INPUT_DEBUG_DETAIL=${{ inputs.DEBUG_DETAIL }}" >> "$GITHUB_ENV"
           echo "INPUT_ADVANCED_JSON=${{ inputs.ADVANCED_JSON }}" >> "$GITHUB_ENV"
 
-      # Keep a tiny cache just for cadence timestamp
       - name: Restore cadence cache
         id: cadcache
         uses: actions/cache/restore@v4
@@ -88,7 +86,7 @@ jobs:
           ok=yes
           reason=""
 
-          # Effective after-hours flag: manual input (if dispatch) overrides repo/org default
+          # Effective after-hours flag: workflow_dispatch input overrides repo/org default
           run_after_hours="${INPUT_RUN_AFTER_HOURS:-}"
           if [ "${EVENT_IS_DISPATCH}" != "true" ] || [ -z "${run_after_hours}" ]; then
             run_after_hours="${RUN_AFTER_HOURS_DEFAULT}"
@@ -161,11 +159,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Gate: ok=$ok in_rth=$in_rth rem=${rem:-na} cad=$cad tol=$tol AH=$run_after_hours reason='${reason}' NY=$HM"
 
-      - name: Skip (off cadence / outside hours)
+      - name: Skip (off cadence or outside hours)
         if: ${{ steps.gate.outputs.ok != 'yes' }}
-        run: echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
+        run: echo "Skipping: ${{ steps.gate.outputs.reason }} at ${{ steps.gate.outputs.now }} NY"
 
-      # Heavy steps only when gate passes
       - name: Checkout
         if: ${{ steps.gate.outputs.ok == 'yes' }}
         uses: actions/checkout@v4
@@ -196,7 +193,7 @@ jobs:
 
       - name: Compute week key
         if: ${{ steps.gate.outputs.ok == 'yes' }}
-        run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
+        run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> "$GITHUB_ENV"
 
       - name: Restore scanner cache
         if: ${{ steps.gate.outputs.ok == 'yes' }}
@@ -208,7 +205,7 @@ jobs:
           restore-keys: |
             scanner-cache-${{ runner.os }}-
 
-      - name: Expand PROFILE/ADVANCED_JSON → env
+      - name: Expand profile and advanced json to env
         if: ${{ steps.gate.outputs.ok == 'yes' }}
         shell: bash
         env:
@@ -237,7 +234,6 @@ jobs:
               "MIN_RR": 1.2, "DIV_MIN": 1}
           }
           cfg = dict(presets.get(profile, presets["balanced (core)"]))
-
           raw = (os.environ.get("ADVANCED_JSON","") or "").strip()
           if raw:
             try:
@@ -247,7 +243,6 @@ jobs:
             except Exception as e:
               print("Invalid ADVANCED_JSON:", e)
               sys.exit(1)
-
           mapping = {"ENABLE_4H":"IDE_ENABLE_4H","ENFORCE_4H_ANCHORED_VWAP":"ENFORCE_4H_ANCHORED_VWAP",
                      "REGIME_SYMBOL":"REGIME_SYMBOL","REGIME_DOWNGRADE_TO_WATCH":"REGIME_DOWNGRADE_TO_WATCH",
                      "MIN_20D_DOLLAR_VOL":"MIN_20D_DOLLAR_VOL","VOL_UP_LOOKBACK":"VOL_UP_LOOKBACK",
@@ -268,15 +263,9 @@ jobs:
 
       - name: Derive runtime env flags
         if: ${{ steps.gate.outputs.ok == 'yes' }}
-        env:
-          RUN_AH: ${{ steps.gate.outputs.run_after_hours }}
-          EVENT_IS_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
-          INPUT_ALWAYS_NOTIFY: ${{ env.INPUT_ALWAYS_NOTIFY }}
-          INPUT_PING_ON_START: ${{ env.INPUT_PING_ON_START }}
-          INPUT_PING_ON_END: ${{ env.INPUT_PING_ON_END }}
-          INPUT_TICKERS: ${{ env.INPUT_TICKERS }}
         run: |
-          if [ "${RUN_AH}" = "true" ]; then
+          # Use values exported by "Expose context to env" and "Gate cadence"
+          if [ "${{ steps.gate.outputs.run_after_hours }}" = "true" ]; then
             echo "MARKET_ONLY=false" >> "$GITHUB_ENV"
           else
             echo "MARKET_ONLY=true" >> "$GITHUB_ENV"
@@ -323,7 +312,7 @@ jobs:
           path: .cadence_cache
           key: cadence-${{ runner.os }}-v1-${{ github.run_id }}
 
-      - name: Upload CSV + state as artifact
+      - name: Upload CSV and state artifact
         if: ${{ steps.gate.outputs.ok == 'yes' || failure() }}
         uses: actions/upload-artifact@v4
         with:
