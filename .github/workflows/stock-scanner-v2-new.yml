@@ -52,14 +52,17 @@ jobs:
     env:
       TZ: America/New_York
       CADENCE_MIN: '55'   # strict minimum interval between successes
-      TOLERANCE_MIN: '4'  # small modulo window to avoid duplicate cron hits
-      # Choose source of RUN_AFTER_HOURS:
-      # - manual dispatch: inputs.RUN_AFTER_HOURS
-      # - scheduled: repo/org var or secret if present; else false
-      RUN_AFTER_HOURS: ${{ (github.event_name == 'workflow_dispatch' && inputs.RUN_AFTER_HOURS) || (github.event_name != 'workflow_dispatch' && (vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || false)) }}
+      TOLERANCE_MIN: '4'  # small window for modulo alignment
+      # Default AH toggle for scheduled runs (can be repo/org var or secret). Manual runs override in the gate step.
+      RUN_AFTER_HOURS: ${{ vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || 'false' }}
 
     steps:
-      # --- tiny cache that stores the last successful run time ---
+      # Store the manual input separately so bash can decide which source to use
+      - name: Expose dispatch input to env
+        id: expose_inputs
+        run: echo "RUN_AFTER_HOURS_INPUT=${{ github.event_name == 'workflow_dispatch' && inputs.RUN_AFTER_HOURS || '' }}" >> "$GITHUB_ENV"
+
+      # Tiny cache that stores the last successful run time
       - name: Restore cadence cache
         id: cadcache
         uses: actions/cache/restore@v4
@@ -70,17 +73,26 @@ jobs:
             cadence-${{ runner.os }}-v1-
             cadence-${{ runner.os }}-
 
-      # --- Gate FIRST; everything else depends on it ---
+      # ---- Gate FIRST; everything else depends on it ----
       - name: Gate cadence (sets outputs ok=yes|no)
         id: gate
         shell: bash
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           ok=yes
           reason=""
 
+          # Choose AH flag: manual input (if present) beats job default
+          run_after_hours="${RUN_AFTER_HOURS_INPUT:-}"
+          if [ -z "${run_after_hours}" ]; then
+            run_after_hours="${RUN_AFTER_HOURS}"
+          fi
+          run_after_hours="${run_after_hours,,}"   # normalize
+
           # Current NY time
-          dow=$(TZ=America/New_York date +%u)    # 1..7 (Mon..Sun)
+          dow=$(TZ=America/New_York date +%u)    # 1..7
           hh=$(TZ=America/New_York date +%H)
           mm=$(TZ=America/New_York date +%M)
           mins=$((10#$hh*60 + 10#$mm))
@@ -90,8 +102,6 @@ jobs:
 
           cad=${CADENCE_MIN:-55}
           tol=${TOLERANCE_MIN:-4}
-          run_after_hours="${RUN_AFTER_HOURS}"
-          run_after_hours="${run_after_hours,,}"   # lowercase normalize
 
           # In regular trading hours?
           in_rth=no
@@ -104,15 +114,15 @@ jobs:
             ok=no; reason="weekend"
           fi
 
-          # 2) If outside RTH and after-hours not allowed, block
+          # 2) Outside RTH and AH not allowed
           if [ "$ok" = "yes" ] && [ "$in_rth" = "no" ] && [ "$run_after_hours" != "true" ]; then
             ok=no; reason="outside RTH"
           fi
 
-          # 3) Modulo cadence window (anchored to 09:30 ET) for predictability
+          # 3) Modulo cadence (anchored to 09:30 ET) for predictability
           if [ "$ok" = "yes" ]; then
             delta=$(( mins - open ))
-            rem=$(( ( (delta % cad) + cad ) % cad ))   # safe modulo
+            rem=$(( ( (delta % cad) + cad ) % cad ))
             if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
               : # on cadence
             else
@@ -148,22 +158,22 @@ jobs:
           echo "Gate: ok=$ok in_rth=$in_rth rem=${rem:-na} cad=$cad tol=$tol reason='${reason}' NY=$HM"
 
       - name: Skip (off cadence / outside hours)
-        if: "steps.gate.outputs.ok != 'yes'"
+        if: steps.gate.outputs.ok != 'yes'
         run: echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
 
-      # --- Heavy steps guarded by the gate ---
+      # ---- Heavy steps guarded by the gate ----
       - name: Checkout
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         uses: actions/checkout@v4
 
       - name: Set up Python
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Cache pip
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
@@ -171,7 +181,7 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install deps
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
@@ -181,11 +191,11 @@ jobs:
           fi
 
       - name: Compute week key
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
 
       - name: Restore scanner cache
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         id: scancache
         uses: actions/cache/restore@v4
         with:
@@ -195,7 +205,7 @@ jobs:
             scanner-cache-${{ runner.os }}-
 
       - name: Expand PROFILE/ADVANCED_JSON → env
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         shell: bash
         env:
           PROFILE: ${{ inputs.PROFILE }}
@@ -250,7 +260,7 @@ jobs:
           PY
 
       - name: Run scanner
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -261,26 +271,26 @@ jobs:
           TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
-          NOTIFY_PREFIX: "[Enhanced Version V2-New] "
+          NOTIFY_PREFIX: "[Enhanced Version V2] "
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
       # --- Stamp success time & persist it so next run enforces ≥55 min ---
       - name: Stamp last run time
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         run: |
           mkdir -p .cadence_cache
           date -u +%s > .cadence_cache/last_run_epoch.txt
 
       - name: Save cadence cache
-        if: "steps.gate.outputs.ok == 'yes'"
+        if: steps.gate.outputs.ok == 'yes'
         uses: actions/cache/save@v4
         with:
           path: .cadence_cache
           key: cadence-${{ runner.os }}-v1-${{ github.run_id }}
 
       - name: Upload CSV + state as artifact
-        if: "steps.gate.outputs.ok == 'yes' || failure()"
+        if: steps.gate.outputs.ok == 'yes' || failure()
         uses: actions/upload-artifact@v4
         with:
           name: scanner-output
@@ -289,7 +299,7 @@ jobs:
             .scanner_cache/alerts_dip4_seen.json
 
       - name: Save scanner cache
-        if: "steps.gate.outputs.ok == 'yes' && steps.scancache.outputs['cache-hit'] != 'true'"
+        if: steps.gate.outputs.ok == 'yes' && steps.scancache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .scanner_cache
