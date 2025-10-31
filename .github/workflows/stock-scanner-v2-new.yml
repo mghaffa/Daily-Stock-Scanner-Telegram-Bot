@@ -1,4 +1,4 @@
-name: Stock Scanner V2 (Telegram)
+name: Stock Scanner V2-New (Telegram)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
