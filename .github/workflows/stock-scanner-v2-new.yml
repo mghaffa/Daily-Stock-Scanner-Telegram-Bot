@@ -1,8 +1,8 @@
-name: Stock Scanner V2 (Telegram)
+name: Stock Scanner V2-New (Telegram)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false  # don't cancel long scans
+  cancel-in-progress: false
 
 on:
   schedule:
@@ -51,14 +51,13 @@ jobs:
 
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'   # strict spacing target
-      TOLERANCE_MIN: '4'  # small window so only one cron tick passes
-      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
-        && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
-        || (vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || 'false') }}
+      CADENCE_MIN: '55'   # strict minimum interval between successes
+      TOLERANCE_MIN: '4'  # small modulo window to avoid multiple cron hits
+      # Single-line expression to avoid YAML parse errors:
+      RUN_AFTER_HOURS: "${{ (github.event_name == 'workflow_dispatch' && inputs.RUN_AFTER_HOURS) || vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || false }}"
 
     steps:
-      # --- Restore small cadence cache (last successful run timestamp) ---
+      # --- Restore small cadence cache (stores last success timestamp) ---
       - name: Restore cadence cache
         id: cadcache
         uses: actions/cache/restore@v4
@@ -74,6 +73,7 @@ jobs:
         id: gate
         shell: bash
         run: |
+          set -euo pipefail
           ok=yes
           reason=""
 
@@ -254,13 +254,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
           MARKET_ONLY: ${{ env.RUN_AFTER_HOURS == 'true' && 'false' || 'true' }}
-          ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
-            && (inputs.ALWAYS_NOTIFY && 'true' || 'false') || 'true' }}
+          ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch' && (inputs.ALWAYS_NOTIFY && 'true' || 'false') || 'true' }}
           TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
           TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
-          NOTIFY_PREFIX: "[Enhanced Version V2-New] "
+          NOTIFY_PREFIX: "[Enhanced Version V2] "
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
