@@ -1,4 +1,4 @@
-name: Stock Scanner V2-New (Telegram)
+name: Stock Scanner V2 (Telegram)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,16 +51,14 @@ jobs:
 
     env:
       TZ: America/New_York
-      CADENCE_MIN: '55'     # strict spacing target
-      TOLERANCE_MIN: '4'    # keep small (2–4) so only one cron tick passes per window
-      # For schedule: prefer repo/org variable; fall back to secret; default false.
-      # For manual dispatch: use the input.
+      CADENCE_MIN: '55'   # strict spacing target
+      TOLERANCE_MIN: '4'  # small window so only one cron tick passes
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
         && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
         || (vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || 'false') }}
 
     steps:
-      # ---- Restore tiny cadence cache so we know last successful run time ----
+      # --- Restore small cadence cache (last successful run timestamp) ---
       - name: Restore cadence cache
         id: cadcache
         uses: actions/cache/restore@v4
@@ -71,45 +69,45 @@ jobs:
             cadence-${{ runner.os }}-v1-
             cadence-${{ runner.os }}-
 
-      # ---- Gate FIRST; everything else depends on it ----
+      # --- Gate FIRST; everything else depends on it ---
       - name: Gate cadence (sets outputs ok=yes|no)
         id: gate
         shell: bash
         run: |
           ok=yes
           reason=""
-      
+
           # Current NY time
           dow=$(TZ=America/New_York date +%u)    # 1..7 (Mon..Sun)
           hh=$(TZ=America/New_York date +%H)
           mm=$(TZ=America/New_York date +%M)
           mins=$((10#$hh*60 + 10#$mm))
-      
-          open=$((9*60 + 30))   # 09:30
-          close=$((16*60))      # 16:00
-      
+
+          open=$((9*60 + 30))    # 09:30
+          close=$((16*60))       # 16:00
+
           cad=${CADENCE_MIN:-55}
           tol=${TOLERANCE_MIN:-4}
           run_after_hours="${RUN_AFTER_HOURS}"
           run_after_hours="${run_after_hours,,}"   # lowercase normalize
 
-          # Are we in regular trading hours?
+          # In regular trading hours?
           in_rth=no
           if [ "$dow" -ge 1 ] && [ "$dow" -le 5 ] && [ $mins -ge $open ] && [ $mins -lt $close ]; then
             in_rth=yes
           fi
-      
+
           # 1) Block weekends always
           if [ "$dow" -ge 6 ]; then
             ok=no; reason="weekend"
           fi
-      
+
           # 2) If outside RTH and after-hours not allowed, block
           if [ "$ok" = "yes" ] && [ "$in_rth" = "no" ] && [ "$run_after_hours" != "true" ]; then
             ok=no; reason="outside RTH"
           fi
-      
-          # 3) Modulo cadence window (anchored to 09:30 ET) — keeps schedule predictable
+
+          # 3) Modulo cadence window (anchored to 09:30 ET) for predictability
           if [ "$ok" = "yes" ]; then
             delta=$(( mins - open ))
             rem=$(( ( (delta % cad) + cad ) % cad ))   # safe modulo
@@ -120,8 +118,7 @@ jobs:
             fi
           fi
 
-          # 4) STRICT minimum interval since last success (≥ CADENCE_MIN minutes)
-          #    Prevents double-fires inside one tolerance window.
+          # 4) STRICT minimum interval since last success (≥ CADENCE_MIN)
           mkdir -p .cadence_cache
           last_path=".cadence_cache/last_run_epoch.txt"
           now_epoch=$(date -u +%s)
@@ -137,7 +134,7 @@ jobs:
               ok=no; reason="interval gate: elapsed=${elapsed}min < cad=${cad}min"
             fi
           fi
-      
+
           HM=$(TZ=America/New_York date +'%H:%M')
           {
             echo "now=$HM"
@@ -152,7 +149,7 @@ jobs:
         if: steps.gate.outputs.ok != 'yes'
         run: echo "Skipping: ${{ steps.gate.outputs.reason }} @ ${{ steps.gate.outputs.now }} NY"
 
-      # ---- Heavy steps guarded by the gate ----
+      # --- Heavy steps guarded by the gate ---
       - name: Checkout
         if: steps.gate.outputs.ok == 'yes'
         uses: actions/checkout@v4
@@ -263,11 +260,11 @@ jobs:
           TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
-          NOTIFY_PREFIX: "[Enhanced Version V2] "
+          NOTIFY_PREFIX: "[Enhanced Version V2-New] "
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
-      # ---- Stamp success time & persist it so next run can enforce ≥55 min ----
+      # --- Stamp success time & persist it so next run enforces ≥55 min ---
       - name: Stamp last run time
         if: steps.gate.outputs.ok == 'yes'
         run: |
