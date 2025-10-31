@@ -51,8 +51,8 @@ jobs:
 
     env:
       TZ: America/New_York
-      CADENCE_MIN: '45'     # strict spacing target
-      TOLERANCE_MIN: '4'    # keep small (2–4) so only one cron tick passes per window
+      CADENCE_MIN: '55'     # strict spacing target
+      TOLERANCE_MIN: '5'    # keep small (2–4) so only one cron tick passes per window
       # For schedule: prefer repo/org variable; fall back to secret; default false.
       # For manual dispatch: use the input.
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch' && (inputs.RUN_AFTER_HOURS && 'true' || 'false') || (vars.RUN_AFTER_HOURS || secrets.RUN_AFTER_HOURS || 'false') }}
