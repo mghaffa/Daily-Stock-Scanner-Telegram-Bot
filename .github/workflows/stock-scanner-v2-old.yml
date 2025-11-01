@@ -103,16 +103,31 @@ jobs:
             ok=no; reason="outside RTH"
           fi
       
+          # # 3) Cadence gate applies in BOTH RTH and (if allowed) after-hours
+          # if [ "$ok" = "yes" ]; then
+          #   delta=$(( mins - open ))                              # anchor cadence to 09:30 ET
+          #   rem=$(( ( (delta % cad) + cad ) % cad ))             # safe modulo
+          #   if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+          #     : # on cadence
+          #   else
+          #     ok=no; reason="off cadence (rem=$rem tol=$tol)"
+          #   fi
+          # fi
+
           # 3) Cadence gate applies in BOTH RTH and (if allowed) after-hours
+          # But skip cadence check for manual dispatches
           if [ "$ok" = "yes" ]; then
-            delta=$(( mins - open ))                              # anchor cadence to 09:30 ET
-            rem=$(( ( (delta % cad) + cad ) % cad ))             # safe modulo
-            if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
-              : # on cadence
-            else
-              ok=no; reason="off cadence (rem=$rem tol=$tol)"
+            if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+              delta=$(( mins - open ))                              # anchor cadence to 09:30 ET
+              rem=$(( ( (delta % cad) + cad ) % cad ))             # safe modulo
+              if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+                : # on cadence
+              else
+                ok=no; reason="off cadence (rem=$rem tol=$tol)"
+              fi
             fi
           fi
+
       
           HM=$(TZ=America/New_York date +'%H:%M')
           {
