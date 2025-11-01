@@ -236,7 +236,9 @@ jobs:
           TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
-          NOTIFY_PREFIX: "[Enhanced Version V2-Old] "
+          #NOTIFY_PREFIX: "[Enhanced Version V2-Old] "
+          NOTIFY_PREFIX: ${{ format('[ Version V2-Old _ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
