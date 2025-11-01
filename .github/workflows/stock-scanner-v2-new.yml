@@ -113,15 +113,29 @@ jobs:
           fi
       
           # 3) Modulo cadence window (anchored to 09:30 ET) — keeps schedule predictable
+          # if [ "$ok" = "yes" ]; then
+          #   delta=$(( mins - open ))
+          #   rem=$(( ( (delta % cad) + cad ) % cad ))   # safe modulo
+          #   if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+          #     : # on cadence
+          #   else
+          #     ok=no; reason="off cadence (rem=$rem tol=$tol)"
+          #   fi
+          # fi
+
+          #Belwo version will fix the weekend run issue in manula mode
           if [ "$ok" = "yes" ]; then
-            delta=$(( mins - open ))
-            rem=$(( ( (delta % cad) + cad ) % cad ))   # safe modulo
-            if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
-              : # on cadence
-            else
-              ok=no; reason="off cadence (rem=$rem tol=$tol)"
+            if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+              delta=$(( mins - open ))
+              rem=$(( ( (delta % cad) + cad ) % cad ))   # safe modulo
+              if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+                : # on cadence
+              else
+                ok=no; reason="off cadence (rem=$rem tol=$tol)"
+              fi
             fi
           fi
+
 
           # 4) STRICT minimum interval since last success (≥ CADENCE_MIN minutes)
           #    Prevents double-fires inside one tolerance window.
@@ -134,13 +148,22 @@ jobs:
             last_epoch=0
           fi
 
-          if [ "$ok" = "yes" ] && [ "$last_epoch" -gt 0 ]; then
+          # if [ "$ok" = "yes" ] && [ "$last_epoch" -gt 0 ]; then
+          #   elapsed=$(( (now_epoch - last_epoch) / 60 ))
+          #   if [ $elapsed -lt $cad ]; then
+          #     ok=no; reason="interval gate: elapsed=${elapsed}min < cad=${cad}min"
+          #   fi
+          # fi
+
+          #Belwo version will fix the weekend run issue in manula mode
+          # 4) STRICT minimum interval — skip for manual
+          if [ "$ok" = "yes" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$last_epoch" -gt 0 ]; then
             elapsed=$(( (now_epoch - last_epoch) / 60 ))
             if [ $elapsed -lt $cad ]; then
               ok=no; reason="interval gate: elapsed=${elapsed}min < cad=${cad}min"
             fi
           fi
-      
+
           HM=$(TZ=America/New_York date +'%H:%M')
           {
             echo "now=$HM"
@@ -266,7 +289,9 @@ jobs:
           TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
-          NOTIFY_PREFIX: "[Enhanced Version V2 - New] "
+          #NOTIFY_PREFIX: "[Enhanced Version V2 - New] "
+          NOTIFY_PREFIX: ${{ format('[ Version V2- New _ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
