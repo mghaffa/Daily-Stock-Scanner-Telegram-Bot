@@ -97,11 +97,16 @@ jobs:
             in_rth=yes
           fi
       
-          # 1) Block weekends always
-          if [ "$dow" -ge 6 ]; then
+          # # 1) Block weekends always
+          # if [ "$dow" -ge 6 ]; then
+          #   ok=no; reason="weekend"
+          # fi
+          
+          # 1) Block weekends unless manual run
+          if [ "$dow" -ge 6 ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             ok=no; reason="weekend"
           fi
-      
+
           # 2) If outside RTH and after-hours not allowed, block
           if [ "$ok" = "yes" ] && [ "$in_rth" = "no" ] && [ "$run_after_hours" != "true" ]; then
             ok=no; reason="outside RTH"
