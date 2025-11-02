@@ -274,7 +274,9 @@ jobs:
           CACHE_DIR: .scanner_cache
     
           # NEW: add a visible prefix to every message from this workflow
-          NOTIFY_PREFIX: "[Enhanced Version V3] "
+          #NOTIFY_PREFIX: "[Enhanced Version V3] "
+          NOTIFY_PREFIX: ${{ format('[ Enhanced Version V3_ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip6.py
       - name: Upload CSV + state as artifact
