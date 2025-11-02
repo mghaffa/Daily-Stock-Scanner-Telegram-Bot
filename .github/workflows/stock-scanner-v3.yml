@@ -169,7 +169,7 @@ jobs:
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,         # require regime for BUY
               "MIN_20D_DOLLAR_VOL": 5_000_000,
               "VOL_UP_LOOKBACK": 8, 
-              "VOL_UP_MULT": 1.2,                                                # require some accumulation - Original value 1.0
+              "VOL_UP_MULT": 1.17,                                                # require some accumulation - Original value 1.0
               "BUY_LOWER_BAND_ATR_MULT": 0.5,                                    # Original value  0.45
               "BUY_UPPER_BAND_ATR_MULT": 0.24,                                   # a hair wider than balanced, still disciplined - Original value 0.25 looser
               "SOFT_SWEET_PAD_ATR": 0.20,                                        # must hold near sweet spot after cross - original value 0.40 -looseest
