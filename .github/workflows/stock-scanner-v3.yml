@@ -122,7 +122,9 @@ jobs:
       - name: Expand PROFILE/ADVANCED_JSON → env
         shell: bash
         env:
-          PROFILE: ${{ inputs.PROFILE }}
+          # For scheduled runs there is no inputs.PROFILE; default it explicitly:
+          PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.PROFILE || 'balanced (core)' }}
+          #PROFILE: ${{ inputs.PROFILE }}
           ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
           DEBUG_DETAIL: ${{ inputs.DEBUG_DETAIL }}
         run: |
@@ -250,6 +252,17 @@ jobs:
                   v = as_bool(v)
                 f.write(f"{dst}={v}\n")
             f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
+            f.write(f"PROFILE_EFFECTIVE={profile}\n")
+            mode_map = {
+              "balanced (core)": "Balanced",
+              "conservative (strict)": "Conservative",
+              "aggressive (loose)": "Aggressive"
+            }
+            mode = mode_map.get(profile, "Balanced")
+            f.write(f"NOTIFY_PREFIX=[ Enhanced Version V3_ {mode} Mode ] \n")
+            # Instruct the Python to always honor PROFILE_EFFECTIVE for banner
+            f.write("FORCE_PREFIX_FROM_PROFILE=true\n")
+          
           print("Effective profile:", profile)
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
@@ -275,7 +288,11 @@ jobs:
     
           # NEW: add a visible prefix to every message from this workflow
           #NOTIFY_PREFIX: "[Enhanced Version V3] "
-          NOTIFY_PREFIX: ${{ format('[ Enhanced Version V3_ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+          #NOTIFY_PREFIX: ${{ format('[ Enhanced Version V3_ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+          # Use the canonical, profile-derived banner:
+          NOTIFY_PREFIX: ${{ env.NOTIFY_PREFIX }}
+          PROFILE_EFFECTIVE: ${{ env.PROFILE_EFFECTIVE }}
+          FORCE_PREFIX_FROM_PROFILE: 'true'
 
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip6.py
