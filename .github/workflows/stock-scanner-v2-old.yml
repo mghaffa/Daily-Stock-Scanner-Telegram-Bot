@@ -52,7 +52,7 @@ jobs:
     env:
       TZ: America/New_York
       CADENCE_MIN: '55'
-      TOLERANCE_MIN: '8'
+      TOLERANCE_MIN: '15'
       # For schedule: prefer repo/org variable; fall back to secret; default false.
       # For manual dispatch: use the input.
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
@@ -234,6 +234,9 @@ jobs:
                 if isinstance(v, bool): v = as_bool(v)
                 f.write(f"{dst}={v}\n")
             f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
+            f.write(f"PROFILE_EFFECTIVE={profile}\n")
+            f.write(f"NOTIFY_PREFIX=[ Version V2-Old _ {mode} Mode ]\n")
+            f.write(f"FORCE_PREFIX_FROM_PROFILE=true\n")
           print("Effective profile:", profile)
           print("Effective config:", json.dumps(cfg, separators=(',',':')))
           PY
@@ -252,8 +255,10 @@ jobs:
           TICKERS: ${{ inputs.TICKERS }}
           CACHE_DIR: .scanner_cache
           #NOTIFY_PREFIX: "[Enhanced Version V2-Old] "
-          NOTIFY_PREFIX: ${{ format('[ Version V2-Old _ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
-
+          #NOTIFY_PREFIX: ${{ format('[ Version V2-Old _ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+          NOTIFY_PREFIX: ${{ env.NOTIFY_PREFIX }}
+          PROFILE_EFFECTIVE: ${{ env.PROFILE_EFFECTIVE }}
+          FORCE_PREFIX_FROM_PROFILE: 'true'
         run: |
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
 
