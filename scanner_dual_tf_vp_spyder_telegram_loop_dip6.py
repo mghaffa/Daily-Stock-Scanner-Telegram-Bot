@@ -68,11 +68,32 @@ TELEGRAM_BOT_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID       = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 TELEGRAM_CHAT_IDS      = os.getenv("TELEGRAM_CHAT_IDS", "").strip()
 TELEGRAM_AUTO_DISCOVER = True
+
+# Banner / prefix handling
+NOTIFY_PREFIX = os.getenv("NOTIFY_PREFIX", "")
+PROFILE_EFFECTIVE = os.getenv("PROFILE_EFFECTIVE", "").strip().lower()
+FORCE_PREFIX_FROM_PROFILE = _env_bool("FORCE_PREFIX_FROM_PROFILE", False)
+
+
 NOTIFY_PREFIX = os.getenv("NOTIFY_PREFIX", "")
 ALWAYS_NOTIFY          = _env_bool("ALWAYS_NOTIFY", False)
 TELEGRAM_PING_ON_START = _env_bool("TELEGRAM_PING_ON_START", False)
 TELEGRAM_PING_ON_END   = _env_bool("TELEGRAM_PING_ON_END", False)
 
+
+def _computed_prefix_from_profile(profile: str) -> str:
+    mode_map = {
+        "balanced (core)": "Balanced",
+        "conservative (strict)": "Conservative",
+        "aggressive (loose)": "Aggressive",
+    }
+    mode = mode_map.get((profile or "balanced (core)").lower(), "Balanced")
+    return f"[ Enhanced Version V3_ {mode} Mode ] "
+
+# If asked to force (or if missing), compute from PROFILE_EFFECTIVE
+if FORCE_PREFIX_FROM_PROFILE or not NOTIFY_PREFIX:
+    NOTIFY_PREFIX = _computed_prefix_from_profile(PROFILE_EFFECTIVE)
+    
 # Universe
 RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","googl","msft","klac","ibm","aapl",
                "tqqq","intc","bulz","cost","tsla","meta","now","nflx","hims","ntra","ddog","tsm",
@@ -133,6 +154,7 @@ print("[cfg] USE_AVWAP_4W_4H=", USE_AVWAP_4W_4H, "AVWAP_TOL_ATR=", AVWAP_TOL_ATR
 print("[cfg] RR_MIN=", RR_MIN, "DIV_MIN=", DIV_MIN, "SUPPORT_MIN_PASS=", SUPPORT_MIN_PASS)
 print("[cfg] PRICE_TRIGGER_EASED=", PRICE_TRIGGER_EASED)
 print("[cfg] DEBUG_DETAIL=", DEBUG_DETAIL)
+print("[cfg] ALWAYS_NOTIFY=", ALWAYS_NOTIFY, "NOTIFY_PREFIX=", NOTIFY_PREFIX)
 
 # ===================== UTIL / FETCH ===================== #
 def _squeeze_col(x):
@@ -458,7 +480,7 @@ def _parse_ids(s: str):
     return [p for p in re.split(r"[,\s]+", s) if p]
 
 # Add to the existing cfg prints (just below the others)
-print("[cfg] ALWAYS_NOTIFY=", ALWAYS_NOTIFY, "NOTIFY_PREFIX=", NOTIFY_PREFIX)
+#print("[cfg] ALWAYS_NOTIFY=", ALWAYS_NOTIFY, "NOTIFY_PREFIX=", NOTIFY_PREFIX)
 
 def notify_all(text: str):
     if NOTIFY_PREFIX:
