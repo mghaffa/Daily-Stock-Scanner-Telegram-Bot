@@ -194,7 +194,7 @@ jobs:
           python - <<'PY'
           import os, json, sys
           profile = (os.environ.get("PROFILE","balanced (core)") or "balanced (core)").strip().lower()
-                    mode_map = {
+          mode_map = {
             "balanced (core)": "Balanced",
             "conservative (strict)": "Conservative",
             "aggressive (loose)": "Aggressive"
