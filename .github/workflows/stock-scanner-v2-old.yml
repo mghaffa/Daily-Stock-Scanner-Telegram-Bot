@@ -194,6 +194,13 @@ jobs:
           python - <<'PY'
           import os, json, sys
           profile = (os.environ.get("PROFILE","balanced (core)") or "balanced (core)").strip().lower()
+                    mode_map = {
+            "balanced (core)": "Balanced",
+            "conservative (strict)": "Conservative",
+            "aggressive (loose)": "Aggressive"
+          }
+          mode = mode_map.get(profile, "Balanced")
+          
           presets = {
             "balanced (core)": {"ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
               "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
