@@ -6,7 +6,7 @@ on:
   # Poll every 5 min within a UTC window that covers both EDT and EST RTH.
   # EDT RTH ≈ 13:30–20:00 UTC; EST RTH ≈ 14:30–21:00 UTC.
   schedule:
-    - cron: "*/5 13-21 * * 1-5"
+    - cron: "*/5 * * * 1-5"
   workflow_dispatch:
     inputs:
       RUN_AFTER_HOURS:
