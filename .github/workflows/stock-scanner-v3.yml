@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 12
     env:
       TZ: America/New_York
-      CADENCE_MIN: '90'
+      CADENCE_MIN: '80'
       TOLERANCE_MIN: '9'
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
         && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
