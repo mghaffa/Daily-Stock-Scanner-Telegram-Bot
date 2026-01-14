@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-scanner_dual_tf_vp_spyder_telegram_loop_dip5.py
+scanner_dual_tf_vp_spyder_telegram_loop_dip6.py
 
 Purpose:
 - Find *timely* long entries on quality pullbacks, not just "under sug_buy".
@@ -139,7 +139,7 @@ INTRA_PERIOD="90d"; INTRA_INTERVAL="60m"
 LB=5; RB=5
 
 TITLE_TEXT = (
-    "Scanner (dip5-soft): Trend + Sweet-spot + Volume + Momentum + R/R + optional 4H AVWAP\n"
+    "Scanner (dip6-soft): Trend + Sweet-spot + Volume + Momentum + R/R + optional 4H AVWAP\n"
     f"- Primary: Trend + Liquidity + R/R. Supporting (need ≥{SUPPORT_MIN_PASS}): Sweet, Volume, Momentum.\n"
     f"- Sweet inner band: [EMA50-{SWEET_ATR_LOW:.2f}*ATR, EMA50+{SWEET_ATR_HIGH:.2f}*ATR]; soft pad ±{SOFT_SWEET_PAD_ATR:.2f}*ATR.\n"
 )
@@ -656,7 +656,7 @@ def build_dataframe() -> pd.DataFrame:
 # -------- de-dup state for alerts -------- #
 CACHE_DIR = os.getenv("CACHE_DIR", ".scanner_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
-STATE_FILE = os.path.join(CACHE_DIR, "alerts_dip4_seen.json")
+STATE_FILE = os.path.join(CACHE_DIR, "alerts_dip6_seen.json")
 
 def load_seen() -> Set[str]:
     try:
@@ -686,7 +686,7 @@ def run_once(first_run=False):
 
     if first_run and TELEGRAM_PING_ON_START:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-        notify_all(f"dip5-soft scanner is live at {ts} (UTC).")
+        notify_all(f"dip6-soft scanner is live at {ts} (UTC).")
 
     df = build_dataframe()
 
@@ -706,7 +706,7 @@ def run_once(first_run=False):
 
     print(df_view.to_string(index=False))
 
-    out = "scanner_dual_tf_vp_dip4.csv"
+    out = "scanner_dual_tf_vp_dip6.csv"
     df.to_csv(out, index=False)
     print("\nSaved:", out)
 
@@ -757,7 +757,7 @@ def run_once(first_run=False):
     
     if (not first_run) and TELEGRAM_PING_ON_END:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-        notify_all(f"dip5-soft iteration completed at {ts} (UTC).")
+        notify_all(f"dip6-soft iteration completed at {ts} (UTC).")
 
 def main_loop():
     if IDE_LOOP:
