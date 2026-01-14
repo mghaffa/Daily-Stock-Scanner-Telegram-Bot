@@ -52,13 +52,13 @@ jobs:
         || (vars.RUN_AFTER_HOURS || 'false') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -112,7 +112,7 @@ jobs:
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
       - name: Restore scanner cache
         id: scancache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .scanner_cache
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
@@ -255,7 +255,7 @@ jobs:
               "aggressive (loose)": "Aggressive"
             }
             mode = mode_map.get(profile, "Balanced")
-            f.write(f"NOTIFY_PREFIX=[ Enhanced Version V4_ {mode} Mode ] \n")
+            f.write(f"NOTIFY_PREFIX=[ Enhanced Version V5_ {mode} Mode ] \n")
             # Instruct the Python to always honor PROFILE_EFFECTIVE for banner
             f.write("FORCE_PREFIX_FROM_PROFILE=true\n")
           
@@ -283,18 +283,18 @@ jobs:
           CACHE_DIR: .scanner_cache
     
           # NEW: add a visible prefix to every message from this workflow
-          #NOTIFY_PREFIX: "[Enhanced Version V4] "
-          #NOTIFY_PREFIX: ${{ format('[ Enhanced Version V4_ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+          #NOTIFY_PREFIX: "[Enhanced Version V5] "
+          #NOTIFY_PREFIX: ${{ format('[ Enhanced Version V5_ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
           # Use the canonical, profile-derived banner:
           NOTIFY_PREFIX: ${{ env.NOTIFY_PREFIX }}
           PROFILE_EFFECTIVE: ${{ env.PROFILE_EFFECTIVE }}
           FORCE_PREFIX_FROM_PROFILE: 'true'
 
         run: |
-          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip7.py
+          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip7_LRC_two_lists.py
       - name: Upload CSV + state as artifact
         if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch') || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: scanner-output
           path: |
@@ -302,7 +302,7 @@ jobs:
             .scanner_cache/alerts_dip7_seen.json
       - name: Save scanner cache
         if: ((steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')) && steps.scancache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .scanner_cache
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
