@@ -132,6 +132,7 @@ LRC_LEN            = _env_int("LRC_LEN", 100)
 LRC_DEVLEN         = _env_float("LRC_DEVLEN", 2.0)
 LRC_TOUCH_USE_LOW  = _env_bool("LRC_TOUCH_USE_LOW", True)
 LRC_TOUCH_TOL_ATR  = _env_float("LRC_TOUCH_TOL_ATR", 0.10)  # tolerance in ATR units
+LRC_TOUCH_REQUIRED = _env_bool("LRC_TOUCH_REQUIRED", False)
 
 TITLE_TEXT = (
     "Scanner (dip7): Trend + Sweet-spot + Volume + Momentum + R/R + optional 4H AVWAP\n"
@@ -149,7 +150,7 @@ print("[cfg] USE_AVWAP_4W_4H=", USE_AVWAP_4W_4H, "AVWAP_TOL_ATR=", AVWAP_TOL_ATR
 print("[cfg] RR_MIN=", RR_MIN, "DIV_MIN=", DIV_MIN, "SUPPORT_MIN_PASS=", SUPPORT_MIN_PASS)
 print("[cfg] PRICE_TRIGGER_EASED=", PRICE_TRIGGER_EASED)
 print("[cfg] LRC_ENABLE=", LRC_ENABLE, "LRC_LEN=", LRC_LEN, "LRC_DEVLEN=", LRC_DEVLEN,
-      "LRC_TOUCH_USE_LOW=", LRC_TOUCH_USE_LOW, "LRC_TOUCH_TOL_ATR=", LRC_TOUCH_TOL_ATR)
+      "LRC_TOUCH_USE_LOW=", LRC_TOUCH_USE_LOW, "LRC_TOUCH_TOL_ATR=", LRC_TOUCH_TOL_ATR, "LRC_TOUCH_REQUIRED=", LRC_TOUCH_REQUIRED)
 print("[cfg] DEBUG_DETAIL=", DEBUG_DETAIL)
 print("[cfg] ALWAYS_NOTIFY=", ALWAYS_NOTIFY, "NOTIFY_PREFIX=", NOTIFY_PREFIX)
 
@@ -646,17 +647,23 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     # Status logic:
     # WATCH stays based on primary_ok (as before)
     # BUY requires LRC-touch + strict gates (if REGIME_STRICT) or primary + trigger (if not strict)
+    # LRC touch can be made a hard pre-filter (for both WATCH and BUY) via LRC_TOUCH_REQUIRED.
+    lrc_required = bool(LRC_ENABLE and LRC_TOUCH_REQUIRED)
+    watch_ok = primary_ok and (not lrc_required or flags["lrc_touch"])
+
     if REGIME_STRICT:
         strict_ok = primary_ok and flags["regime"] and flags["avwap4h"] and flags["price_trigger"]
-        status = "BUY" if (strict_ok and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
+        status = "BUY" if (strict_ok and flags["lrc_touch"]) else ("WATCH" if watch_ok else "")
     else:
         # still require trigger, and now require LRC touch for BUY
-        status = "BUY" if (primary_ok and flags["price_trigger"] and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
+        status = "BUY" if (primary_ok and flags["price_trigger"] and flags["lrc_touch"]) else ("WATCH" if watch_ok else "")
 
     reasons = []
     reasons += t_reasons
     reasons += [liq_msg, vol_msg, sweet_msg]
     reasons += m_reasons + [f"momo votes={momo_votes}", div_msg, rr_msg]
+    if bool(LRC_ENABLE and LRC_TOUCH_REQUIRED) and (not lrc_touch_ok):
+        reasons.append("LRC required (touch)")
     reasons += regime_msgs
     if IDE_ENABLE_4H and USE_AVWAP_4W_4H: reasons.append("4H AVWAP ok" if avwap4h_ok else "4H AVWAP fail")
     reasons.append(trig_msg)
