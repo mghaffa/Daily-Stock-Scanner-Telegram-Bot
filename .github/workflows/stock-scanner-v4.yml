@@ -271,7 +271,7 @@ jobs:
           CACHE_DIR: .scanner_cache
     
           # NEW: add a visible prefix to every message from this workflow
-          #NOTIFY_PREFIX: "[Enhanced Version V3] "
+          #NOTIFY_PREFIX: "[Enhanced Version V4] "
           #NOTIFY_PREFIX: ${{ format('[ Enhanced Version V4_ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
           # Use the canonical, profile-derived banner:
           NOTIFY_PREFIX: ${{ env.NOTIFY_PREFIX }}
@@ -286,8 +286,8 @@ jobs:
         with:
           name: scanner-output
           path: |
-            scanner_dual_tf_vp_dip4.csv
-            .scanner_cache/alerts_dip4_seen.json
+            scanner_dual_tf_vp_dip7.csv
+            .scanner_cache/alerts_dip7_seen.json
       - name: Save scanner cache
         if: ((steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')) && steps.scancache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
