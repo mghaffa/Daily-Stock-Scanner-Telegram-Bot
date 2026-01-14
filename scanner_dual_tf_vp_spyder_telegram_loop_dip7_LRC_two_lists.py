@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-scanner_dual_tf_vp_spyder_telegram_loop_dip7.py
+scanner_dual_tf_vp_spyder_telegram_loop_dip7_LRC_two_lists.py
 
 Adds:
 - Linear Regression Channel (LRC) on 1D (regression + residual stdev band)
@@ -78,7 +78,7 @@ def _computed_prefix_from_profile(profile: str) -> str:
         "aggressive (loose)": "Aggressive",
     }
     mode = mode_map.get((profile or "balanced (core)").lower(), "Balanced")
-    return f"[ Enhanced Version V4_ {mode} Mode ] "
+    return f"[ Enhanced Version V5_ {mode} Mode ] "
 
 if FORCE_PREFIX_FROM_PROFILE or not NOTIFY_PREFIX:
     NOTIFY_PREFIX = _computed_prefix_from_profile(PROFILE_EFFECTIVE)
