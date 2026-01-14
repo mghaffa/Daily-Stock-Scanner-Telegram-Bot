@@ -754,18 +754,37 @@ def build_dataframe() -> pd.DataFrame:
 CACHE_DIR = os.getenv("CACHE_DIR", ".scanner_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 STATE_FILE = os.path.join(CACHE_DIR, "alerts_dip7_seen.json")
+STATE_FILE_LRC = os.path.join(CACHE_DIR, "alerts_dip7_lrc_seen.json")
 
 def load_seen() -> Set[str]:
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f); return set(data if isinstance(data,list) else [])
-    except Exception: return set()
+            data = json.load(f)
+            return set(data if isinstance(data, list) else [])
+    except Exception:
+        return set()
 
 def save_seen(s: Set[str]):
     try:
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(sorted(list(s)), f, ensure_ascii=False, indent=2)
-    except Exception: pass
+    except Exception:
+        pass
+
+def load_seen_lrc() -> Set[str]:
+    try:
+        with open(STATE_FILE_LRC, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return set(data if isinstance(data, list) else [])
+    except Exception:
+        return set()
+
+def save_seen_lrc(s: Set[str]):
+    try:
+        with open(STATE_FILE_LRC, "w", encoding="utf-8") as f:
+            json.dump(sorted(list(s)), f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 def key_buy(row) -> str: return f"BUY|{row['ticker']}|{row['tf']}|{row['date']}"
 def key_watch(row) -> str: return f"WATCH|{row['ticker']}|{row['tf']}|{row['date']}"
@@ -777,17 +796,7 @@ def is_market_open_now() -> bool:
     if now.weekday() >= 5: return False
     return MARKET_START <= now.time() <= MARKET_END
 
-def run_once(first_run: bool = False):
-    """
-    One scan pass:
-    - Build dataframe (one Row per ticker)
-    - Print full table
-    - Print two disjoint LRC lists:
-        1) LRC touch OK only
-        2) LRC touch OK + other gates (confirmed)
-    - Notify BUY/WATCH deltas (existing behavior)
-    - Optionally notify LRC lists (separately) with de-dup
-    """
+def run_once(first_run=False):
     if first_run and IDE_PRINT_TITLE:
         print("="*88); print(TITLE_TEXT); print("="*88)
 
@@ -797,43 +806,41 @@ def run_once(first_run: bool = False):
 
     df = build_dataframe()
 
-    # --- LRC touch reporting (two disjoint lists) ---
-    lrc_only_df = pd.DataFrame()
-    lrc_both_df = pd.DataFrame()
-    if LRC_ENABLE and ("lrc_touch_ok" in df.columns):
-        touched = df[(df["lrc_touch_ok"] == True) & (df.get("error","").fillna("") == "")]
-        if not touched.empty:
-            if REGIME_STRICT:
-                both_mask = (touched.get("strict_ok", False) == True)
-            else:
-                both_mask = (touched.get("primary_ok", False) == True) & (touched.get("trigger_ok", False) == True)
 
-            lrc_both_df = touched[both_mask].copy()
-            lrc_only_df = touched[~both_mask].copy()
-
-        # Console summary
-        cols = [c for c in ["ticker","tf","date","close","lrc_lower","lrc_mid","lrc_upper",
-                            "sug_buy","sug_stop","rr","conf","status"] if c in df.columns]
-        print("\n--- LRC touch OK (setup only; did NOT pass all other gates) ---")
-        if lrc_only_df.empty:
-            print("(none)")
+# --- LRC touch reporting (separate lists) ---
+lrc_only_df = pd.DataFrame()
+lrc_both_df = pd.DataFrame()
+if LRC_ENABLE and ("lrc_touch_ok" in df.columns):
+    touched = df[(df["lrc_touch_ok"] == True) & (df.get("error","").fillna("") == "")]
+    if not touched.empty:
+        if REGIME_STRICT:
+            both_mask = (touched.get("strict_ok", False) == True)
         else:
-            print(lrc_only_df[cols].to_string(index=False))
+            both_mask = (touched.get("primary_ok", False) == True) & (touched.get("trigger_ok", False) == True)
+        lrc_both_df = touched[both_mask].copy()
+        lrc_only_df = touched[~both_mask].copy()
 
-        print("\n--- LRC touch OK + All other gates (confirmed) ---")
-        if lrc_both_df.empty:
-            print("(none)")
-        else:
-            print(lrc_both_df[cols].to_string(index=False))
+    # Console summary (disjoint lists)
+    cols = [c for c in ["ticker","tf","date","close","lrc_lower","lrc_mid","lrc_upper","sug_buy","sug_stop","rr","conf","status"] if c in df.columns]
+    print("\n--- LRC touch OK (setup only; did NOT pass all other gates) ---")
+    if lrc_only_df.empty:
+        print("(none)")
+    else:
+        print(lrc_only_df[cols].to_string(index=False))
+    print("\n--- LRC touch OK + All other gates (confirmed) ---")
+    if lrc_both_df.empty:
+        print("(none)")
+    else:
+        print(lrc_both_df[cols].to_string(index=False))
 
-    # --- Print full table ---
+
     base_cols = ["ticker","tf","date","status","conf","close",
                  "lrc_lower","lrc_mid","lrc_upper",
                  "sug_buy","sug_stop","stop","target","rr",
                  "ema50","ema200","adx","aroon_up","aroon_dn","poc","hvn_below","lvn_below",
                  "div_cnt","reasons","error"]
-    dbg_cols  = ["trend_ok","liq_ok","vol_ok","sweet_ok","momo_ok","div_ok","rr_ok","regime_ok","avwap4h_ok",
-                 "trigger_ok","lrc_touch_ok","primary_ok","strict_ok","fail_primary","fail_secondary"]
+    dbg_cols  = ["trend_ok","liq_ok","vol_ok","sweet_ok","momo_ok","div_ok","rr_ok","regime_ok","avwap4h_ok","trigger_ok","lrc_touch_ok",
+                 "fail_primary","fail_secondary"]
     cols = base_cols + (dbg_cols if DEBUG_DETAIL else [])
     df = df[[c for c in cols if c in df.columns]]
 
@@ -849,96 +856,118 @@ def run_once(first_run: bool = False):
     print("\nSaved:", out)
 
     if DEBUG_DETAIL:
-        gates = [c for c in dbg_cols if c in df.columns and c.endswith("_ok")]
+        gates = [c for c in dbg_cols if c in df.columns and not c.startswith("fail_")]
         print("\n[debug] gate pass counts:")
         for g in gates:
-            print(f"  {g:14s} : {int(df[g].fillna(False).sum())} / {len(df)}")
+            print(f"  {g:12s} : {int(df[g].fillna(False).sum())} / {len(df)}")
         print()
+seen = load_seen()
+buys = df[(df["status"]=="BUY") & df["error"].eq("")]
+watch = df[(df["status"]=="WATCH") & df["error"].eq("")]
 
-    # --- De-dup state ---
-    seen = load_seen()
-    seen_changed = False
+new_buys, new_watch = [], []
+for _, r in buys.iterrows():
+    k = key_buy(r)
+    if k not in seen:
+        new_buys.append(r); seen.add(k)
+for _, r in watch.iterrows():
+    k = key_watch(r)
+    if k not in seen:
+        new_watch.append(r); seen.add(k)
 
-    # --- BUY/WATCH notifications (delta) ---
-    buys = df[(df.get("status","")=="BUY") & df.get("error","").fillna("").eq("")]
-    watch = df[(df.get("status","")=="WATCH") & df.get("error","").fillna("").eq("")]
+# --- Telegram: optional LRC touch reporting (two disjoint lists) ---
+lrc_lines: List[str] = []
+if LRC_ENABLE and LRC_TOUCH_REPORT and ("lrc_touch_ok" in df.columns):
+    # Recompute the disjoint lists from df to ensure consistency.
+    touched = df[(df["lrc_touch_ok"] == True) & (df.get("error","").fillna("") == "")]
+    lrc_only_df = pd.DataFrame()
+    lrc_both_df = pd.DataFrame()
+    if not touched.empty:
+        if REGIME_STRICT:
+            both_mask = (touched.get("strict_ok", False) == True)
+        else:
+            both_mask = (touched.get("primary_ok", False) == True) & (touched.get("trigger_ok", False) == True)
+        lrc_both_df = touched[both_mask].copy()
+        lrc_only_df = touched[~both_mask].copy()
 
-    new_buys, new_watch = [], []
-    for _, r in buys.iterrows():
-        k = key_buy(r)
-        if k not in seen:
-            new_buys.append(r); seen.add(k); seen_changed = True
-    for _, r in watch.iterrows():
-        k = key_watch(r)
-        if k not in seen:
-            new_watch.append(r); seen.add(k); seen_changed = True
+    def _fmt(v: object, ndigits: int = 2) -> str:
+        try:
+            x = float(v)
+            return f"{x:.{ndigits}f}" if np.isfinite(x) else "—"
+        except Exception:
+            return "—"
 
-    if new_buys or new_watch:
-        lines = [f"Entries {datetime.now().strftime('%Y-%m-%d %H:%M')}:", ""]
-        if new_buys:
-            lines += ["BUY (confirmed):", "——————"]
-            for r in sorted(new_buys, key=lambda x: (-x.get('conf',0), x.get('ticker',''))):
-                lines.append(
-                    f"- {r['ticker']} [{r['tf']}] c {r['close']:.2f} | "
-                    f"LRC_lo {r.get('lrc_lower','')} | stop {r['stop']:.2f} | tgt {r['target']:.2f} | "
-                    f"R/R {r['rr']:.2f} | conf {int(r.get('conf',0))}"
+    seen_lrc = load_seen_lrc() if LRC_TOUCH_REPORT_DEDUP else set()
+
+    def _collect(sub: pd.DataFrame, prefix: str) -> List[pd.Series]:
+        items: List[pd.Series] = []
+        if sub is None or sub.empty:
+            return items
+        sub = sub.sort_values(["conf","ticker"], ascending=[False, True])
+        for _, rr in sub.iterrows():
+            k = f"{prefix}|{rr['ticker']}|{rr['tf']}|{rr['date']}"
+            if (not LRC_TOUCH_REPORT_DEDUP) or (k not in seen_lrc):
+                items.append(rr)
+                seen_lrc.add(k)
+                if len(items) >= max(0, int(LRC_TOUCH_REPORT_MAX)):
+                    break
+        return items
+
+    lrc_only_new = _collect(lrc_only_df, "LRC_ONLY")
+    lrc_both_new = _collect(lrc_both_df, "LRC_BOTH")
+
+    if lrc_only_new or lrc_both_new:
+        lrc_lines += ["LRC touch OK (setup only):", "——————"]
+        if not lrc_only_new:
+            lrc_lines.append("—")
+        else:
+            for rr in lrc_only_new:
+                lrc_lines.append(
+                    f"- {rr['ticker']} [{rr['tf']}] c {_fmt(rr.get('close'))} | "
+                    f"LRC_lo {_fmt(rr.get('lrc_lower'))} | conf {int(rr.get('conf',0))}"
                 )
-        if new_watch:
-            if new_buys: lines += [""]
-            lines += ["In Buy Zone (watching):", "——————"]
-            for r in sorted(new_watch, key=lambda x: (-x.get('conf',0), x.get('ticker',''))):
-                lines.append(
-                    f"- {r['ticker']} [{r['tf']}] c {r['close']:.2f} ≤ sug_buy {r['sug_buy']:.2f} | "
-                    f"LRC_lo {r.get('lrc_lower','')} | conf {int(r.get('conf',0))}"
+
+        lrc_lines += ["", "LRC touch OK + Confirmed (passes gates):", "——————"]
+        if not lrc_both_new:
+            lrc_lines.append("—")
+        else:
+            for rr in lrc_both_new:
+                lrc_lines.append(
+                    f"- {rr['ticker']} [{rr['tf']}] c {_fmt(rr.get('close'))} | "
+                    f"LRC_lo {_fmt(rr.get('lrc_lower'))} | stop {_fmt(rr.get('stop'))} | "
+                    f"tgt {_fmt(rr.get('target'))} | R/R {_fmt(rr.get('rr'))} | conf {int(rr.get('conf',0))}"
                 )
-        notify_all("\n".join(lines))
 
-    # --- Optional LRC list notifications (separate from BUY/WATCH) ---
-    # These are informational lists you asked for: (1) LRC touch only, (2) LRC + all gates.
-    if LRC_ENABLE and LRC_TOUCH_REPORT and ("lrc_touch_ok" in df.columns):
-        def _lrc_key(prefix: str, row) -> str:
-            return f"{prefix}|{row['ticker']}|{row['tf']}|{row['date']}"
+    if LRC_TOUCH_REPORT_DEDUP and (lrc_only_new or lrc_both_new):
+        save_seen_lrc(seen_lrc)
 
-        parts = []
-        # cap sizes
-        lrc_only_send = lrc_only_df.head(max(0, LRC_TOUCH_REPORT_MAX))
-        lrc_both_send = lrc_both_df.head(max(0, LRC_TOUCH_REPORT_MAX))
+# If we have something new to report (BUY/WATCH changes) OR an LRC report, notify.
+if new_buys or new_watch or lrc_lines:
+    lines = [f"Entries {datetime.now().strftime('%Y-%m-%d %H:%M')}:", ""]
+    if new_buys:
+        lines += ["BUY (confirmed):", "——————"]
+        for r in sorted(new_buys, key=lambda x: (-x['conf'], x['ticker'])):
+            lines.append(
+                f"- {r['ticker']} [{r['tf']}] c {r['close']:.2f} | "
+                f"LRC_lo {r.get('lrc_lower','')} | stop {r['stop']:.2f} | tgt {r['target']:.2f} | "
+                f"R/R {r['rr']:.2f} | conf {r['conf']}"
+            )
+    if new_watch:
+        if new_buys: lines += [""]
+        lines += ["In Buy Zone (watching):", "——————"]
+        for r in sorted(new_watch, key=lambda x: (-x['conf'], x['ticker'])):
+            lines.append(
+                f"- {r['ticker']} [{r['tf']}] c {r['close']:.2f} ≤ sug_buy {r['sug_buy']:.2f} | "
+                f"LRC_lo {r.get('lrc_lower','')} | conf {r['conf']}"
+            )
 
-        # de-dup
-        if LRC_TOUCH_REPORT_DEDUP:
-            if not lrc_only_send.empty:
-                keep = []
-                for _, r in lrc_only_send.iterrows():
-                    k = _lrc_key("LRC_ONLY", r)
-                    if k not in seen:
-                        keep.append(r); seen.add(k); seen_changed = True
-                lrc_only_send = pd.DataFrame(keep) if keep else pd.DataFrame()
+    if lrc_lines:
+        if new_buys or new_watch:
+            lines += ["", ""]
+        lines += lrc_lines
 
-            if not lrc_both_send.empty:
-                keep = []
-                for _, r in lrc_both_send.iterrows():
-                    k = _lrc_key("LRC_BOTH", r)
-                    if k not in seen:
-                        keep.append(r); seen.add(k); seen_changed = True
-                lrc_both_send = pd.DataFrame(keep) if keep else pd.DataFrame()
-
-        if not lrc_only_send.empty or not lrc_both_send.empty:
-            parts.append(f"LRC touch report {datetime.now().strftime('%Y-%m-%d %H:%M')}:")
-            if not lrc_only_send.empty:
-                parts += ["", "LRC touch OK (setup only):", "——————"]
-                for _, r in lrc_only_send.iterrows():
-                    parts.append(
-                        f"- {r['ticker']} [{r['tf']}] c {float(r['close']):.2f} | "
-                        f"LRC_lo {r.get('lrc_lower','')} | conf {int(r.get('conf',0))}"
-                    )
-            if not lrc_both_send.empty:
-                parts += ["", "LRC touch OK + gates (confirmed):", "——————"]
-                for _, r in lrc_both_send.iterrows():
-                    parts.append(
-                        f"- {r['ticker']} [{r['tf']}] c {float(r['close']):.2f} | "
-                        f"LRC_lo {r.get('lrc_lower','')} | R/R {float(r.get('rr',0)):.2f} | conf {int(r.get('conf',0))}"
-                    )
-            notify_all("\n".join(parts))
+    notify_all("\n".join(lines))
+    save_seen(seen)
 
     if ALWAYS_NOTIFY:
         summary = [
@@ -949,8 +978,52 @@ def run_once(first_run: bool = False):
         ]
         notify_all("\n".join(summary))
 
-    if seen_changed:
-        save_seen(seen)
+
+# LRC touch report (two disjoint lists)
+if LRC_TOUCH_REPORT and LRC_ENABLE:
+    lrc_lines_only = []
+    lrc_lines_both = []
+
+    if ("lrc_touch_ok" in df.columns) and (not df.empty):
+        touched = df[(df["lrc_touch_ok"] == True) & (df.get("error","").fillna("") == "")]
+        if not touched.empty:
+            if REGIME_STRICT:
+                both_mask = (touched.get("strict_ok", False) == True)
+            else:
+                both_mask = (touched.get("primary_ok", False) == True) & (touched.get("trigger_ok", False) == True)
+
+            lrc_both = touched[both_mask].head(LRC_TOUCH_REPORT_MAX)
+            lrc_only = touched[~both_mask].head(LRC_TOUCH_REPORT_MAX)
+
+            for _, r in lrc_only.iterrows():
+                k = f"LRC_ONLY|{r.get('ticker')}|{r.get('tf')}|{r.get('date')}"
+                if (not LRC_TOUCH_REPORT_DEDUP) or (k not in seen):
+                    lrc_lines_only.append(f"{r.get('ticker')} {r.get('tf')} close={r.get('close')}  (LRC touch OK)")
+                    if LRC_TOUCH_REPORT_DEDUP:
+                        seen.add(k)
+
+            for _, r in lrc_both.iterrows():
+                k = f"LRC_BOTH|{r.get('ticker')}|{r.get('tf')}|{r.get('date')}"
+                if (not LRC_TOUCH_REPORT_DEDUP) or (k not in seen):
+                    lrc_lines_both.append(f"{r.get('ticker')} {r.get('tf')} close={r.get('close')}  (LRC + gates)")
+                    if LRC_TOUCH_REPORT_DEDUP:
+                        seen.add(k)
+
+    if lrc_lines_only or lrc_lines_both:
+        msg = []
+        msg.append("LRC touch report")
+        msg.append("")
+        msg.append("LRC touch OK (setup only):")
+        msg.extend(lrc_lines_only if lrc_lines_only else ["(none)"])
+        msg.append("")
+        msg.append("LRC touch OK + all other gates (confirmed):")
+        msg.extend(lrc_lines_both if lrc_lines_both else ["(none)"])
+        notify_all("\n".join(msg))
+
+    if (not first_run) and TELEGRAM_PING_ON_END:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        notify_all(f"dip7 iteration completed at {ts} (UTC).")
+
 def main_loop():
     if IDE_LOOP:
         first=True
@@ -960,6 +1033,7 @@ def main_loop():
             time.sleep(max(60, int(IDE_INTERVAL_MIN*60)))
     else:
         run_once(first_run=True)
+
 def market_open_now() -> bool:
     now = datetime.now(ZoneInfo("America/New_York"))
     return (now.weekday() < 5) and (dtime(9,30) <= now.time() <= dtime(16,0))
