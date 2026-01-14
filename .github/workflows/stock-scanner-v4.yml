@@ -143,7 +143,7 @@ jobs:
               "LRC_DEVLEN": 2.0,
               "LRC_TOUCH_USE_LOW": True,
               "LRC_TOUCH_TOL_ATR": 0.10,
-              LRC_TOUCH_REQUIRED:True,
+              "LRC_TOUCH_REQUIRED":True,
               "VOL_UP_MULT": 1.28,                                        # real accumulation, not starved- original vale 1.2
               "BUY_LOWER_BAND_ATR_MULT": 0.55,                             # slightly above 0.5 to force better stabilization - Original value 0.5
               "BUY_UPPER_BAND_ATR_MULT": 0.22,                            # narrower than 0.25, not as late as 0.20- Original value 0.25
@@ -217,7 +217,8 @@ jobs:
             "LRC_LEN": "LRC_LEN",
             "LRC_DEVLEN": "LRC_DEVLEN",
             "LRC_TOUCH_USE_LOW": "LRC_TOUCH_USE_LOW",
-            "LRC_TOUCH_TOL_ATR": "LRC_TOUCH_TOL_ATR",         
+            "LRC_TOUCH_TOL_ATR": "LRC_TOUCH_TOL_ATR",
+            "LRC_TOUCH_REQUIRED": "LRC_TOUCH_REQUIRED",
             "VOL_UP_MULT": "VOL_UP_MULT",
             "BUY_LOWER_BAND_ATR_MULT": "BUY_LOWER_BAND_ATR_MULT",
             "BUY_UPPER_BAND_ATR_MULT": "BUY_UPPER_BAND_ATR_MULT",
