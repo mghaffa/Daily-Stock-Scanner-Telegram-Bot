@@ -697,7 +697,6 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         # Non-strict mode: confirm with (primary_ok + trigger); LRC touch is required for BUY
         strict_ok = primary_ok and flags["price_trigger"]
         status = "BUY" if (strict_ok and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
-"BUY" if (primary_ok and flags["price_trigger"] and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
 
     reasons = []
     reasons += t_reasons
