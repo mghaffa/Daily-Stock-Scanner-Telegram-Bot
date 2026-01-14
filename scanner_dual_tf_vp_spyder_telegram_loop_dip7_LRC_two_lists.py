@@ -549,28 +549,56 @@ def notify_all(text: str):
 # ===================== CORE ===================== #
 @dataclass
 class Row:
-    ticker: str; tf: str; date: str; status: str; close: float; sug_buy: float; sug_stop: float
-    stop: float; target: float; rr: float; ema50: float; ema200: float; adx: float
-    aroon_up: float; aroon_dn: float; hvn_below: float|None; lvn_below: float|None; poc: float|None
-    div_cnt: int
-    # NEW: LRC fields
-    lrc_mid: float|None; lrc_upper: float|None; lrc_lower: float|None; lrc_slope: float|None
-    reasons: str; conf: int; error: str
-    # debug flags
-    trend_ok: Optional[bool] = None; liq_ok: Optional[bool] = None; vol_ok: Optional[bool] = None
-    sweet_ok: Optional[bool] = None; momo_ok: Optional[bool] = None; div_ok: Optional[bool] = None
-    rr_ok: Optional[bool] = None; regime_ok: Optional[bool] = None; avwap4h_ok: Optional[bool] = None
-    trigger_ok: Optional[bool] = None
-    lrc_touch_ok: Optional[bool] = None
+    # identity
+    ticker: str
+    tf: str
+
+    # main outputs (defaults allow error rows)
+    date: str = ""
+    status: str = ""
+    close: float = float("nan")
+    sug_buy: float = float("nan")
+    sug_stop: float = float("nan")
+    stop: float = float("nan")
+    target: float = float("nan")
+    rr: float = float("nan")
+    ema50: float = float("nan")
+    ema200: float = float("nan")
+    adx: float = float("nan")
+    aroon_up: float = float("nan")
+    aroon_dn: float = float("nan")
+    hvn_below: float | None = None
+    lvn_below: float | None = None
+    poc: float | None = None
+    div_cnt: int = 0
+
+    # LRC fields
+    lrc_mid: float | None = None
+    lrc_upper: float | None = None
+    lrc_lower: float | None = None
+    lrc_slope: float | None = None
+    lrc_touch_ok: bool | None = None
     lrc_touch_msg: str = ""
-    primary_ok: bool = False
-    strict_ok: bool = False
-    lrc_touch_ok: Optional[bool] = None
-    lrc_touch_msg: Optional[str] = None
-    primary_ok: Optional[bool] = None
-    strict_ok: Optional[bool] = None
-    fail_primary: Optional[str] = None
-    fail_secondary: Optional[str] = None
+
+    # gates / debug
+    primary_ok: bool | None = None
+    strict_ok: bool | None = None
+    trend_ok: bool | None = None
+    liq_ok: bool | None = None
+    vol_ok: bool | None = None
+    sweet_ok: bool | None = None
+    momo_ok: bool | None = None
+    div_ok: bool | None = None
+    rr_ok: bool | None = None
+    regime_ok: bool | None = None
+    avwap4h_ok: bool | None = None
+    trigger_ok: bool | None = None
+    fail_primary: str = ""
+    fail_secondary: str = ""
+
+    reasons: str = ""
+    conf: int = 0
+    error: str = ""
 
 def _parse_universe() -> List[str]:
     env = (os.getenv("TICKERS","") or "").strip()
@@ -656,6 +684,9 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     must_ok = all(flags[n] for n in must_names)
     primary_ok = must_ok and (support_pass >= SUPPORT_MIN_PASS)
 
+    # strict_ok means: passed all non-LRC gates for BUY confirmation
+    strict_ok = False
+
     # Status logic:
     # WATCH stays based on primary_ok (as before)
     # BUY requires LRC-touch + strict gates (if REGIME_STRICT) or primary + trigger (if not strict)
@@ -663,8 +694,10 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         strict_ok = primary_ok and flags["regime"] and flags["avwap4h"] and flags["price_trigger"]
         status = "BUY" if (strict_ok and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
     else:
-        # still require trigger, and now require LRC touch for BUY
-        status = "BUY" if (primary_ok and flags["price_trigger"] and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
+        # Non-strict mode: confirm with (primary_ok + trigger); LRC touch is required for BUY
+        strict_ok = primary_ok and flags["price_trigger"]
+        status = "BUY" if (strict_ok and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
+"BUY" if (primary_ok and flags["price_trigger"] and flags["lrc_touch"]) else ("WATCH" if primary_ok else "")
 
     reasons = []
     reasons += t_reasons
@@ -693,8 +726,8 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         lrc_upper=(None if not np.isfinite(lrc_upper) else round(float(lrc_upper),2)),
         lrc_lower=(None if not np.isfinite(lrc_lower) else round(float(lrc_lower),2)),
         lrc_slope=(None if not np.isfinite(lrc_slope) else round(float(lrc_slope),6)),
-        lrc_touch_ok=bool(lrc_ok),
-        lrc_touch_msg=msg,
+        lrc_touch_ok=bool(ok_lrc_touch),
+        lrc_touch_msg=lrc_msg,
         primary_ok=bool(primary_ok),
         strict_ok=bool(strict_ok),
         reasons=" | ".join(reasons), conf=conf, error="",
@@ -755,31 +788,32 @@ def run_once(first_run=False):
 
     df = build_dataframe()
 
-    # --- LRC touch reporting (separate lists) ---
-    lrc_only_df = pd.DataFrame()
-    lrc_both_df = pd.DataFrame()
-    if LRC_ENABLE and ("lrc_touch_ok" in df.columns):
-        touched = df[(df["lrc_touch_ok"] == True) & (df.get("error","").fillna("") == "")]
-        if not touched.empty:
-            if REGIME_STRICT:
-                both_mask = (touched.get("strict_ok", False) == True)
-            else:
-                both_mask = (touched.get("primary_ok", False) == True) & (touched.get("trigger_ok", False) == True)
-            lrc_both_df = touched[both_mask].copy()
-            lrc_only_df = touched[~both_mask].copy()
 
-        # Console summary (disjoint lists)
-        cols = [c for c in ["ticker","tf","date","close","lrc_lower","lrc_mid","lrc_upper","sug_buy","sug_stop","rr","conf","status"] if c in df.columns]
-        print("\n--- LRC touch OK (setup only; did NOT pass all other gates) ---")
-        if lrc_only_df.empty:
-            print("(none)")
+# --- LRC touch reporting (separate lists) ---
+lrc_only_df = pd.DataFrame()
+lrc_both_df = pd.DataFrame()
+if LRC_ENABLE and ("lrc_touch_ok" in df.columns):
+    touched = df[(df["lrc_touch_ok"] == True) & (df.get("error","").fillna("") == "")]
+    if not touched.empty:
+        if REGIME_STRICT:
+            both_mask = (touched.get("strict_ok", False) == True)
         else:
-            print(lrc_only_df[cols].to_string(index=False))
-        print("\n--- LRC touch OK + All other gates (confirmed) ---")
-        if lrc_both_df.empty:
-            print("(none)")
-        else:
-            print(lrc_both_df[cols].to_string(index=False))
+            both_mask = (touched.get("primary_ok", False) == True) & (touched.get("trigger_ok", False) == True)
+        lrc_both_df = touched[both_mask].copy()
+        lrc_only_df = touched[~both_mask].copy()
+
+    # Console summary (disjoint lists)
+    cols = [c for c in ["ticker","tf","date","close","lrc_lower","lrc_mid","lrc_upper","sug_buy","sug_stop","rr","conf","status"] if c in df.columns]
+    print("\n--- LRC touch OK (setup only; did NOT pass all other gates) ---")
+    if lrc_only_df.empty:
+        print("(none)")
+    else:
+        print(lrc_only_df[cols].to_string(index=False))
+    print("\n--- LRC touch OK + All other gates (confirmed) ---")
+    if lrc_both_df.empty:
+        print("(none)")
+    else:
+        print(lrc_both_df[cols].to_string(index=False))
 
 
     base_cols = ["ticker","tf","date","status","conf","close",
@@ -854,6 +888,51 @@ def run_once(first_run=False):
         ]
         notify_all("\n".join(summary))
 
+
+# LRC touch report (two disjoint lists)
+if LRC_TOUCH_REPORT and LRC_ENABLE:
+    lrc_lines_only = []
+    lrc_lines_both = []
+
+    if ("lrc_touch_ok" in df.columns) and (not df.empty):
+        touched = df[(df["lrc_touch_ok"] == True) & (df.get("error","").fillna("") == "")]
+        if not touched.empty:
+            if REGIME_STRICT:
+                both_mask = (touched.get("strict_ok", False) == True)
+            else:
+                both_mask = (touched.get("primary_ok", False) == True) & (touched.get("trigger_ok", False) == True)
+
+            lrc_both = touched[both_mask].head(LRC_TOUCH_REPORT_MAX)
+            lrc_only = touched[~both_mask].head(LRC_TOUCH_REPORT_MAX)
+
+            for _, r in lrc_only.iterrows():
+                k = f"LRC_ONLY|{r.get('ticker')}|{r.get('tf')}|{r.get('date')}"
+                if (not LRC_TOUCH_REPORT_DEDUP) or (k not in seen):
+                    lrc_lines_only.append(f"{r.get('ticker')} {r.get('tf')} close={r.get('close')}  (LRC touch OK)")
+                    if LRC_TOUCH_REPORT_DEDUP:
+                        seen.add(k)
+
+            for _, r in lrc_both.iterrows():
+                k = f"LRC_BOTH|{r.get('ticker')}|{r.get('tf')}|{r.get('date')}"
+                if (not LRC_TOUCH_REPORT_DEDUP) or (k not in seen):
+                    lrc_lines_both.append(f"{r.get('ticker')} {r.get('tf')} close={r.get('close')}  (LRC + gates)")
+                    if LRC_TOUCH_REPORT_DEDUP:
+                        seen.add(k)
+
+    if lrc_lines_only or lrc_lines_both:
+        msg = []
+        msg.append("LRC touch report")
+        msg.append("")
+        msg.append("LRC touch OK (setup only):")
+        msg.extend(lrc_lines_only if lrc_lines_only else ["(none)"])
+        msg.append("")
+        msg.append("LRC touch OK + all other gates (confirmed):")
+        msg.extend(lrc_lines_both if lrc_lines_both else ["(none)"])
+        notify_all("\n".join(msg))
+
+    if (not first_run) and TELEGRAM_PING_ON_END:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        notify_all(f"dip7 iteration completed at {ts} (UTC).")
 
 def main_loop():
     if IDE_LOOP:
