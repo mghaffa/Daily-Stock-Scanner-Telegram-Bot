@@ -302,8 +302,8 @@ jobs:
         with:
           name: scanner-output
           path: |
-            scanner_dual_tf_vp_dip4.csv
-            .scanner_cache/alerts_dip4_seen.json
+            scanner_dual_tf_vp_dip6.csv
+            .scanner_cache/alerts_dip6_seen.json
       - name: Save scanner cache
         if: ((steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')) && steps.scancache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -613,8 +613,8 @@ jobs:
 #         with:
 #           name: scanner-output
 #           path: |
-#             scanner_dual_tf_vp_dip4.csv
-#             .scanner_cache/alerts_dip4_seen.json
+#             scanner_dual_tf_vp_dip6.csv
+#             .scanner_cache/alerts_dip6_seen.json
 
 #       - name: Save scanner cache
 #         if: always() && steps.scancache.outputs.cache-hit != 'true'
