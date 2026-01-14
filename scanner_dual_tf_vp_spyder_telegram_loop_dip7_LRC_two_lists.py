@@ -84,10 +84,10 @@ if FORCE_PREFIX_FROM_PROFILE or not NOTIFY_PREFIX:
     NOTIFY_PREFIX = _computed_prefix_from_profile(PROFILE_EFFECTIVE)
 
 # Universe
-RAW_TICKERS = ["nvda","amd","orcl","avgo","pltr","net","amzn","googl","msft","klac","ibm","aapl",
-               "tqqq","intc","bulz","cost","tsla","meta","now","nflx","hims","ntra","ddog","tsm",
-               "mu","crm","tem","rklb","crwd","uvxy","unh","jpm","abt","bynd","race","sofi","dell","upst","sofi",
-               "gld", "gldm","shny","msci","ccj","shop","ionq","regti","qbts","qtum","qubt","laes","arqq","holo"]
+RAW_TICKERS = ["nvda","amd","orcl","orcx","avgo","avgu", "pltr","pltu","net","amzn","googl","msft","klac","ibm","aapl","aapu","amzu","asts","astx",
+               "tqqq","intc","bulz","cost","cotg","tsla","tsll","meta","now","nowl","nflx","nfxl","hims","ntra","ddog","dogd""tsm",
+               "mu","muu","crm","tem","rklb","rklx","crwd","uvxy","unh","jpm","abt","bynd","race","sofi","dell","upst","sofi",
+               "gld", "gldm","shny","msci","ccj","shop","ionq","regti","qbts","qtum","qubt","laes","arqq","holo","oklo","okll","schd","schx","voo",]
 ALIAS = {"google":"GOOGL"}
 
 # --- Preset-driven risk/filters ---
