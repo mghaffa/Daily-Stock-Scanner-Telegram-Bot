@@ -906,7 +906,14 @@ def run_once(first_run: bool = False):
 
         # ---------------- Divergence v3 tiers ----------------
     print("\n--- Multi-Indicator Divergence (v3) ---")
+    # --- initialize empty tiers to avoid UnboundLocalError ---
+    empty = df_full.iloc[0:0]
     
+    div_tier1  = empty
+    div_tier2  = empty
+    div_tier3a = empty
+    div_tier3b = empty
+
     div_df = df_full[df_full["div_v3_cnt"] >= DIV_MIN].copy()
     
     LRC_NEAR_PCT_STRICT = 0.02   # Tier 1: optimal
