@@ -926,16 +926,27 @@ def run_once(first_run: bool = False):
             (dist_pct <= LRC_NEAR_PCT_EARLY)
         ]
         # Tier 3: Trend pullback divergence (NOT near LRC)
+        # distance from LRC
         dist_pct_full = (df_full["close"] - df_full["lrc_lower"]).abs() / df_full["lrc_lower"]
         
-        div_tier3 = df_full[
-            (dist_pct_full > LRC_NEAR_PCT_EARLY) &   # not near LRC
-            (df_full["ema50"] > df_full["ema200"]) & # structure intact
-            (df_full["close"] > df_full["ema200"]) & # above long-term support
-            (df_full["close"] < df_full["ema50"]) &  # pullback in progress
+        # Tier 3A: shallow pullback
+        div_tier3a = df_full[
+            (df_full["ema50"] > df_full["ema200"]) &
+            (df_full["close"] > df_full["ema200"]) &
+            (df_full["close"] < df_full["ema50"]) &
+            (dist_pct_full >= 0.03) &
+            (dist_pct_full < 0.08) &
             (df_full["lrc_touch_ok"] == False)
         ]
-
+        
+        # Tier 3B: deep pullback
+        div_tier3b = df_full[
+            (dist_pct_full >= 0.08) &
+            (df_full["ema50"] > df_full["ema200"]) &
+            (df_full["close"] > df_full["ema200"]) &
+            (df_full["close"] < df_full["ema50"]) &
+            (df_full["lrc_touch_ok"] == False)
+        ]
 
     else:
         div_tier1 = div_df.iloc[0:0]
@@ -1004,19 +1015,21 @@ def run_once(first_run: bool = False):
                 f"conf {r['conf']}"
             )
 
-    if not div_tier3.empty:
+    if not div_tier3a.empty:
         if div_lines:
             div_lines += [""]
     
         div_lines += [
-            "🟦 Trend Pullback (Tier 3 – Channel Support, no LRC):",
+            "🟦 Trend Pullback (Tier 3A – Shallow, Above LRC):",
             "——————"
         ]
     
-        for _, r in div_tier3.iterrows():
+        for _, r in div_tier3a.iterrows():
+            dist = abs(r["close"] - r["lrc_lower"]) / r["lrc_lower"]
             div_lines.append(
                 f"- {r['ticker']} [{r['tf']}] c {r['close']} | "
-                f"EMA50 {r['ema50']} | EMA200 {r['ema200']} | "
+                f"EMA50 {r['ema50']} | "
+                f"LRC_lo {r['lrc_lower']} ({dist:.1%} away) | "
                 f"conf {r['conf']}"
             )
 
