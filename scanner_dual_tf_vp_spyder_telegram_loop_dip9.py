@@ -930,15 +930,32 @@ def run_once(first_run: bool = False):
         dist_pct_full = (df_full["close"] - df_full["lrc_lower"]).abs() / df_full["lrc_lower"]
         
         # Tier 3A: shallow pullback
+        # div_tier3a = df_full[
+        #     (df_full["ema50"] > df_full["ema200"]) &
+        #     (df_full["close"] > df_full["ema200"]) &
+        #     (df_full["close"] < df_full["ema50"]) &
+        #     (dist_pct_full >= 0.03) &
+        #     (dist_pct_full < 0.08) &
+        #     (df_full["lrc_touch_ok"] == False)
+        # ]
         div_tier3a = df_full[
+            # ---- structure ----
             (df_full["ema50"] > df_full["ema200"]) &
             (df_full["close"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
+        
+            # ---- location ----
             (dist_pct_full >= 0.03) &
             (dist_pct_full < 0.08) &
-            (df_full["lrc_touch_ok"] == False)
-        ]
+            (df_full["lrc_touch_ok"] == False) &
         
+            # ---- INTENT FILTER (THIS IS THE FIX) ----
+            (
+                (df_full["div_v3_cnt"] >= 1) |   # weak bullish divergence
+                (df_full["reset_ok"] == True)    # momentum reset
+            )
+        ]
+
         
         # Tier 3B: deep pullback
         div_tier3b = df_full[
