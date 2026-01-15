@@ -52,13 +52,13 @@ jobs:
         || (vars.RUN_AFTER_HOURS || 'false') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v9
+        uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v9
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Cache pip
-        uses: actions/cache@v9
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -112,7 +112,7 @@ jobs:
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
       - name: Restore scanner cache
         id: scancache
-        uses: actions/cache/restore@v9
+        uses: actions/cache/restore@v4
         with:
           path: .scanner_cache
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
@@ -294,7 +294,7 @@ jobs:
           PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip9.py
       - name: Upload CSV + state as artifact
         if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch') || failure()
-        uses: actions/upload-artifact@v9
+        uses: actions/upload-artifact@v4
         with:
           name: scanner-output
           path: |
@@ -302,7 +302,7 @@ jobs:
             .scanner_cache/alerts_dip9_seen.json
       - name: Save scanner cache
         if: ((steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')) && steps.scancache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v9
+        uses: actions/cache/save@v4
         with:
           path: .scanner_cache
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
