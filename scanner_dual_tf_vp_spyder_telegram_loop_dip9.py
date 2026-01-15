@@ -416,7 +416,7 @@ def lrc_touch_ok(o: pd.DataFrame) -> Tuple[bool, str, float, float, float, float
     return bool(touched), msg, mid, upper, lower, slope
 
 
-def near_lrc_lower(o: pd.DataFrame, pct: float = 0.02) -> bool:
+def near_lrc_lower(o: pd.DataFrame, pct: float = 0.05) -> bool:
     """
     True if Close is within ±pct of the LRC lower band.
     """
@@ -712,7 +712,7 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
 
     # NEW: LRC touch gate
     ok_lrc_touch, lrc_msg, lrc_mid, lrc_upper, lrc_lower, lrc_slope = lrc_touch_ok(o)
-    near_lrc = near_lrc_lower(o, pct=0.02)
+    near_lrc = near_lrc_lower(o, pct=0.05)
 
     sug_buy, sug_stop, poc, hvn_b, lvn_b, (inner_lo, inner_hi) = suggest_levels(o, vp_lookback, 120)
     ok_rr, rr_msg, stop, target, rr = risk_reward(o, hvn_b, lvn_b)
@@ -878,43 +878,65 @@ def run_once(first_run: bool = False):
         notify_all(f"dip7 scanner is live at {ts} (UTC).")
 
     df_full = build_dataframe()
-    # ---------------- Divergence v3 Reporting ----------------
-    print("\n--- Multi-Indicator Divergence (v3) ---")
-    if "div_v3_cnt" in df_full.columns:
-        div_df = df_full[df_full["div_v3_cnt"] >= DIV_MIN]
-    else:
-        div_df = df_full.iloc[0:0]
 
-    if div_df.empty:
+        # ---------------- Divergence v3 tiers ----------------
+    print("\n--- Multi-Indicator Divergence (v3) ---")
+    
+    div_df = df_full[df_full["div_v3_cnt"] >= DIV_MIN].copy()
+    
+    LRC_NEAR_PCT_STRICT = 0.02   # Tier 1: optimal
+    LRC_NEAR_PCT_EARLY  = 0.08   # Tier 2: early / approaching
+    
+    if not div_df.empty and {"lrc_lower", "close"}.issubset(div_df.columns):
+    
+        dist_pct = (div_df["close"] - div_df["lrc_lower"]).abs() / div_df["lrc_lower"]
+    
+        # Tier 1: touch or very close
+        div_tier1 = div_df[
+            (div_df["lrc_touch_ok"] == True) |
+            (dist_pct <= LRC_NEAR_PCT_STRICT)
+        ]
+    
+        # Tier 2: early divergence, not at LRC yet
+        div_tier2 = div_df[
+            (dist_pct > LRC_NEAR_PCT_STRICT) &
+            (dist_pct <= LRC_NEAR_PCT_EARLY)
+        ]
+    
+    else:
+        div_tier1 = div_df.iloc[0:0]
+        div_tier2 = div_df.iloc[0:0]
+    
+    print("\n🔥 Divergence v3 + LRC LOWER (Tier 1 – Optimal) 🔥")
+    if div_tier1.empty:
         print("(none)")
     else:
-        print(div_df[["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]].to_string(index=False))
-
-    if {"lrc_touch_ok", "lrc_lower", "close"}.issubset(div_df.columns):
-        div_lrc_hits = div_df[
-            (div_df["lrc_touch_ok"] == True) |
-            ((div_df["close"] - div_df["lrc_lower"]).abs() / div_df["lrc_lower"] <= 0.02)
-        ]
-    else:
-        div_lrc_hits = div_df.iloc[0:0]
-    
-    if not div_lrc_hits.empty:
-        print("\n🔥 Divergence v3 + LRC LOWER (touch or ±2%) 🔥")
         print(
-            div_lrc_hits[
+            div_tier1[
+                ["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]
+            ].to_string(index=False)
+        )
+    
+    print("\n🟡 Divergence v3 (Tier 2 – Early / Approaching LRC) 🟡")
+    if div_tier2.empty:
+        print("(none)")
+    else:
+        print(
+            div_tier2[
                 ["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]
             ].to_string(index=False)
         )
 
     # ---------------- Divergence v3 + LRC (Telegram section) ----------------
+    # ---------------- Divergence v3 Telegram sections ----------------
     div_lines: List[str] = []
     
-    if not div_lrc_hits.empty:
+    if not div_tier1.empty:
         div_lines += [
-            "Divergence v3 + LRC Lower (touch or ±2%):",
+            "🔥 Divergence v3 + LRC Lower (Tier 1 – Optimal):",
             "——————"
         ]
-        for _, r in div_lrc_hits.iterrows():
+        for _, r in div_tier1.iterrows():
             div_lines.append(
                 f"- {r['ticker']} [{r['tf']}] c {r['close']} | "
                 f"LRC_lo {r['lrc_lower']} | "
@@ -922,6 +944,22 @@ def run_once(first_run: bool = False):
                 f"conf {r['conf']}"
             )
     
+    if not div_tier2.empty:
+        if div_lines:
+            div_lines += [""]  # spacing
+        div_lines += [
+            "🟡 Divergence v3 (Tier 2 – Early / Approaching LRC):",
+            "——————"
+        ]
+        for _, r in div_tier2.iterrows():
+            dist = abs(r["close"] - r["lrc_lower"]) / r["lrc_lower"]
+            div_lines.append(
+                f"- {r['ticker']} [{r['tf']}] c {r['close']} | "
+                f"LRC_lo {r['lrc_lower']} ({dist:.1%} away) | "
+                f"div_v3 {r['div_v3_cnt']} | "
+                f"conf {r['conf']}"
+            )
+
 
     # ---------------- LRC touch reporting (two disjoint lists) ----------------
     lrc_only_df = pd.DataFrame()
