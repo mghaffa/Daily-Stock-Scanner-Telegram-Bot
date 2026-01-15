@@ -261,6 +261,9 @@ def adx_plus_minus(h,l,c,n=14):
     return adx, plus_di, minus_di
 
 def macd(c, fast=12, slow=26, signal=9):
+    c=_squeeze_col(c); f=ema(c,fast); s=ema(c,slow)
+    line=f-s; sig=line.ewm(span=signal, adjust=False).mean(); hist=line-sig
+    return line, sig, hist
 def cci(series: pd.Series, n=10):
     tp = series
     ma = tp.rolling(n).mean()
