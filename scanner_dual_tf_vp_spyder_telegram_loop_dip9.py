@@ -926,12 +926,16 @@ def run_once(first_run: bool = False):
             (dist_pct <= LRC_NEAR_PCT_EARLY)
         ]
         # Tier 3: Trend pullback divergence (NOT near LRC)
-        div_tier3 = div_df[
-            (dist_pct > LRC_NEAR_PCT_EARLY) &   # far from LRC
-            (div_df["trend_ok"] == True) &      # trend intact
-            (div_df["ema50"] > div_df["ema200"]) &  # long-term structure
-            (div_df["close"] < div_df["ema50"])     # in pullback
+        div_tier3 = df_full[
+            (df_full["trend_ok"] == True) &
+            (df_full["ema50"] > df_full["ema200"]) &
+            (df_full["close"] < df_full["ema50"]) &
+            (
+                (df_full["close"] - df_full["lrc_lower"]).abs() /
+                df_full["lrc_lower"] > LRC_NEAR_PCT_EARLY
+            )
         ]
+
 
     else:
         div_tier1 = div_df.iloc[0:0]
