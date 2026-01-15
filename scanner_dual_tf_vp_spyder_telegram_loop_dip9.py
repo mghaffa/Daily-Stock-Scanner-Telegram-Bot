@@ -356,8 +356,12 @@ def divergence_v3(o: pd.DataFrame, lb=5, rb=5, min_count=2):
     names = []
     for name, s in indicators.items():
         try:
-            if price.iloc[i2] < price.iloc[i1]* 1.002 and s.iloc[i2] > s.iloc[i1]:
+            price_lower = price.iloc[i2] < price.iloc[i1] * 0.998
+            price_flat  = abs(price.iloc[i2] - price.iloc[i1]) / price.iloc[i1] <= 0.01
+            
+            if (price_lower or price_flat) and s.iloc[i2] > s.iloc[i1]:
                 names.append(name)
+
         except Exception:
             pass
 
