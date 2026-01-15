@@ -900,7 +900,22 @@ def run_once(first_run: bool = False):
             ].to_string(index=False)
         )
 
-
+    # ---------------- Divergence v3 + LRC (Telegram section) ----------------
+    div_lines: List[str] = []
+    
+    if not div_lrc_hits.empty:
+        div_lines += [
+            "Divergence v3 + LRC Lower (touch or ±2%):",
+            "——————"
+        ]
+        for _, r in div_lrc_hits.iterrows():
+            div_lines.append(
+                f"- {r['ticker']} [{r['tf']}] c {r['close']} | "
+                f"LRC_lo {r['lrc_lower']} | "
+                f"div_v3 {r['div_v3_cnt']} {r['div_v3_names']} | "
+                f"conf {r['conf']}"
+            )
+    
 
     # ---------------- LRC touch reporting (two disjoint lists) ----------------
     lrc_only_df = pd.DataFrame()
@@ -1067,11 +1082,16 @@ def run_once(first_run: bool = False):
         notify_all("\n".join(summary))
 
     # ---- Send "Entries" message when anything new exists ----
-    if new_buys or new_watch or lrc_lines:
-        lines = [f"Entries {datetime.now().strftime('%Y-%m-%d %H:%M')}:", ""]
 
+    if new_buys or new_watch or lrc_lines or div_lines:
+        lines = [f"Entries {datetime.now().strftime('%Y-%m-%d %H:%M')}:", ""]
+    
+        if div_lines:
+            lines += div_lines + [""]
+    
         if lrc_lines:
             lines += lrc_lines + [""]
+
 
         if new_buys:
             lines += ["BUY (confirmed):", "——————"]
