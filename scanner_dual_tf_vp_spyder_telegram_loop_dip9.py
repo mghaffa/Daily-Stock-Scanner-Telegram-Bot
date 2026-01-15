@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-scanner_dual_tf_vp_spyder_telegram_loop_dip7_LRC_two_lists.py
+scanner_dual_tf_vp_spyder_telegram_loop_dip9.py
 
 Adds:
 - Linear Regression Channel (LRC) on 1D (regression + residual stdev band)
