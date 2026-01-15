@@ -328,7 +328,13 @@ def bullish_div(price: pd.Series, indi: pd.Series, lb: int, rb: int):
     return (p.iloc[i2] < p.iloc[i1]) and (q.iloc[i2] > q.iloc[i1])
 
 def divergence_score(df: pd.DataFrame, lb: int, rb: int):
-
+    inds = {"RSI": df["RSI14"], "MACD": macd(df["Close"])[2], "WILLR": df["WILLR"]}
+    price = df["Close"]; names=[]
+    for k, s in inds.items():
+        try:
+            if bullish_div(price, s, lb, rb): names.append(k)
+        except Exception: pass
+    return len(names), names
 # ===================== MULTI-INDICATOR DIVERGENCE v3 =====================
 def divergence_v3(o: pd.DataFrame, lb=5, rb=5, min_count=2):
     indicators = {
