@@ -972,15 +972,26 @@ def run_once(first_run: bool = False):
             ].to_string(index=False)
         )
         
-    print("\n🟦 Divergence v3 (Tier 3 – Trend Pullback, not LRC) 🟦")
-    if div_tier3.empty:
+    print("\n🟦 Tier 3A – Shallow Trend Pullback (Above LRC) 🟦")
+    if div_tier3a.empty:
         print("(none)")
     else:
         print(
-            div_tier3[
-                ["ticker","close","div_v3_cnt","div_v3_names","ema50","ema200"]
+            div_tier3a[
+                ["ticker","close","ema50","ema200"]
             ].to_string(index=False)
         )
+    
+    print("\n🟪 Tier 3B – Deep Trend Pullback (Below EMA50) 🟪")
+    if div_tier3b.empty:
+        print("(none)")
+    else:
+        print(
+            div_tier3b[
+                ["ticker","close","ema50","ema200"]
+            ].to_string(index=False)
+        )
+
 
     # ---------------- Divergence v3 + LRC (Telegram section) ----------------
     # ---------------- Divergence v3 Telegram sections ----------------
