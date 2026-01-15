@@ -669,7 +669,6 @@ class Row:
     # gates / debug
     primary_ok: bool | None = None
     strict_ok: bool | None = None
-    reset_ok: bool | None = None
     trend_ok: bool | None = None
     liq_ok: bool | None = None
     vol_ok: bool | None = None
@@ -733,7 +732,6 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     ok_div_simple, div_msg, div_cnt, div_names = divergence_ok(o, DIV_MIN)
     div_v3_cnt, div_v3_names = divergence_v3(o, LB, RB, DIV_MIN)
     div_v3_ok = div_v3_cnt >= DIV_MIN
-    reset_ok = momentum_reset(o)
 
     # NEW: LRC touch gate
     ok_lrc_touch, lrc_msg, lrc_mid, lrc_upper, lrc_lower, lrc_slope = lrc_touch_ok(o)
@@ -906,14 +904,7 @@ def run_once(first_run: bool = False):
 
         # ---------------- Divergence v3 tiers ----------------
     print("\n--- Multi-Indicator Divergence (v3) ---")
-    # --- initialize empty tiers to avoid UnboundLocalError ---
-    empty = df_full.iloc[0:0]
     
-    div_tier1  = empty
-    div_tier2  = empty
-    div_tier3a = empty
-    div_tier3b = empty
-
     div_df = df_full[df_full["div_v3_cnt"] >= DIV_MIN].copy()
     
     LRC_NEAR_PCT_STRICT = 0.02   # Tier 1: optimal
@@ -939,28 +930,15 @@ def run_once(first_run: bool = False):
         dist_pct_full = (df_full["close"] - df_full["lrc_lower"]).abs() / df_full["lrc_lower"]
         
         # Tier 3A: shallow pullback
-        # div_tier3a = df_full[
-        #     (df_full["ema50"] > df_full["ema200"]) &
-        #     (df_full["close"] > df_full["ema200"]) &
-        #     (df_full["close"] < df_full["ema50"]) &
-        #     (dist_pct_full >= 0.03) &
-        #     (dist_pct_full < 0.08) &
-        #     (df_full["lrc_touch_ok"] == False)
-        # ]
         div_tier3a = df_full[
             (df_full["ema50"] > df_full["ema200"]) &
             (df_full["close"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
             (dist_pct_full >= 0.03) &
             (dist_pct_full < 0.08) &
-            (df_full["lrc_touch_ok"] == False) &
-            (
-                (df_full["div_v3_cnt"] >= 1) |
-                (df_full["reset_ok"] == True)
-            )
+            (df_full["lrc_touch_ok"] == False)
         ]
-
-
+        
         
         # Tier 3B: deep pullback
         div_tier3b = df_full[
