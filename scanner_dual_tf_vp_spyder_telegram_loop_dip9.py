@@ -78,7 +78,7 @@ def _computed_prefix_from_profile(profile: str) -> str:
         "aggressive (loose)": "Aggressive",
     }
     mode = mode_map.get((profile or "balanced (core)").lower(), "Balanced")
-    return f"[ Enhanced Version V5_ {mode} Mode ] "
+    return f"[ Enhanced Version V9_ {mode} Mode ] "
 
 if FORCE_PREFIX_FROM_PROFILE or not NOTIFY_PREFIX:
     NOTIFY_PREFIX = _computed_prefix_from_profile(PROFILE_EFFECTIVE)
