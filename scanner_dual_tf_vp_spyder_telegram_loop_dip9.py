@@ -859,13 +859,21 @@ def run_once(first_run: bool = False):
     df_full = build_dataframe()
     # ---------------- Divergence v3 Reporting ----------------
     print("\n--- Multi-Indicator Divergence (v3) ---")
-    div_df = df_full[df_full.get("div_v3_cnt", 0) >= DIV_MIN]
+    if "div_v3_cnt" in df_full.columns:
+        div_df = df_full[df_full["div_v3_cnt"] >= DIV_MIN]
+    else:
+        div_df = df_full.iloc[0:0]
+
     if div_df.empty:
         print("(none)")
     else:
         print(div_df[["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]].to_string(index=False))
 
-    div_lrc_hits = div_df[div_df.get("lrc_touch_ok", False) == True]
+    if "lrc_touch_ok" in div_df.columns:
+        div_lrc_hits = div_df[div_df["lrc_touch_ok"] == True]
+    else:
+        div_lrc_hits = div_df.iloc[0:0]
+
     if not div_lrc_hits.empty:
         print("\n🔥 Divergence v3 + LRC LOWER BAND 🔥")
         print(div_lrc_hits[["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]].to_string(index=False))
