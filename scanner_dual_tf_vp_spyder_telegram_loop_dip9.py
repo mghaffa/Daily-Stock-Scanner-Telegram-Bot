@@ -669,6 +669,7 @@ class Row:
     # gates / debug
     primary_ok: bool | None = None
     strict_ok: bool | None = None
+    reset_ok: bool | None = None
     trend_ok: bool | None = None
     liq_ok: bool | None = None
     vol_ok: bool | None = None
@@ -732,6 +733,7 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     ok_div_simple, div_msg, div_cnt, div_names = divergence_ok(o, DIV_MIN)
     div_v3_cnt, div_v3_names = divergence_v3(o, LB, RB, DIV_MIN)
     div_v3_ok = div_v3_cnt >= DIV_MIN
+    reset_ok = momentum_reset(o)
 
     # NEW: LRC touch gate
     ok_lrc_touch, lrc_msg, lrc_mid, lrc_upper, lrc_lower, lrc_slope = lrc_touch_ok(o)
@@ -939,22 +941,18 @@ def run_once(first_run: bool = False):
         #     (df_full["lrc_touch_ok"] == False)
         # ]
         div_tier3a = df_full[
-            # ---- structure ----
             (df_full["ema50"] > df_full["ema200"]) &
             (df_full["close"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
-        
-            # ---- location ----
             (dist_pct_full >= 0.03) &
             (dist_pct_full < 0.08) &
             (df_full["lrc_touch_ok"] == False) &
-        
-            # ---- INTENT FILTER (THIS IS THE FIX) ----
             (
-                (df_full["div_v3_cnt"] >= 1) |   # weak bullish divergence
-                (df_full["reset_ok"] == True)    # momentum reset
+                (df_full["div_v3_cnt"] >= 1) |
+                (df_full["reset_ok"] == True)
             )
         ]
+
 
         
         # Tier 3B: deep pullback
