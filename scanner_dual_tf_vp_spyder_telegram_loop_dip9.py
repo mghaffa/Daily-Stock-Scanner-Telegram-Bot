@@ -320,6 +320,19 @@ def pivot_points(series: pd.Series, lb: int, rb: int):
             if c==np.nanmin(w): lows.append(i)
     return highs, lows
 
+
+def recent_soft_low(series: pd.Series, lookback: int = 10) -> int | None:
+    """
+    Returns index of recent local minimum without requiring future confirmation.
+    """
+    s = _squeeze_col(series)
+    if len(s) < lookback + 2:
+        return None
+
+    window = s.iloc[-lookback:]
+    return window.idxmin()
+
+
 def bullish_div(price: pd.Series, indi: pd.Series, lb: int, rb: int):
     p=_squeeze_col(price); q=_squeeze_col(indi)
     _, lows = pivot_points(p, lb, rb)
@@ -336,7 +349,7 @@ def divergence_score(df: pd.DataFrame, lb: int, rb: int):
         except Exception: pass
     return len(names), names
 # ===================== MULTI-INDICATOR DIVERGENCE v3 =====================
-def divergence_v3(o: pd.DataFrame, lb=5, rb=5, min_count=2):
+def divergence_v3(o: pd.DataFrame, lb=3, rb=3, min_count=2):
     indicators = {
         "RSI": o["RSI14"],
         "MACD": macd(o["Close"])[0],
@@ -347,33 +360,39 @@ def divergence_v3(o: pd.DataFrame, lb=5, rb=5, min_count=2):
     }
 
     price = o["Close"]
-    _, lows = pivot_points(price, lb, rb)
-    if len(lows) < 2:
-        return 0, []
 
-    i1, i2 = lows[-2], lows[-1]
+    # --- Try strict pivots first (Tier 1 logic) ---
+    _, lows = pivot_points(price, lb, rb)
+
+    if len(lows) >= 2:
+        i1, i2 = lows[-2], lows[-1]
+        price_lower = price.iloc[i2] < price.iloc[i1] * 0.998
+        price_flat  = abs(price.iloc[i2] - price.iloc[i1]) / price.iloc[i1] <= 0.01
+
+        names = []
+        for name, s in indicators.items():
+            if (price_lower or price_flat) and s.iloc[i2] > s.iloc[i1]:
+                names.append(name)
+
+        return len(names), names
+
+    # --- Tier 2 fallback: soft recent low (NO pivot confirmation) ---
+    soft_i2 = recent_soft_low(price, lookback=10)
+    soft_i1 = recent_soft_low(price.iloc[:-3], lookback=10)
+
+    if soft_i1 is None or soft_i2 is None:
+        return 0, []
 
     names = []
     for name, s in indicators.items():
         try:
-            price_lower = price.iloc[i2] < price.iloc[i1] * 0.998
-            price_flat  = abs(price.iloc[i2] - price.iloc[i1]) / price.iloc[i1] <= 0.01
-            
-            if (price_lower or price_flat) and s.iloc[i2] > s.iloc[i1]:
+            if price.loc[soft_i2] >= price.loc[soft_i1] * 0.995 and s.loc[soft_i2] > s.loc[soft_i1]:
                 names.append(name)
-
         except Exception:
             pass
 
     return len(names), names
 
-    inds = {"RSI": df["RSI14"], "MACD": macd(df["Close"])[2], "WILLR": df["WILLR"]}
-    price = df["Close"]; names=[]
-    for k, s in inds.items():
-        try:
-            if bullish_div(price, s, lb, rb): names.append(k)
-        except Exception: pass
-    return len(names), names
 
 # ===================== NEW: Linear Regression Channel ===================== #
 def linear_regression_channel(series: pd.Series, length: int, dev_mult: float) -> Tuple[float,float,float,float,float]:
