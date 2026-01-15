@@ -913,7 +913,8 @@ def run_once(first_run: bool = False):
     if not div_df.empty and {"lrc_lower", "close"}.issubset(div_df.columns):
     
         dist_pct = (div_df["close"] - div_df["lrc_lower"]).abs() / div_df["lrc_lower"]
-    
+        dist_pct_full = (df_full["close"] - df_full["lrc_lower"]).abs() / df_full["lrc_lower"]
+
         # Tier 1: touch or very close
         div_tier1 = df_full[
             (
