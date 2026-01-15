@@ -113,7 +113,7 @@ PRICE_TRIGGER_EASED = _env_bool("PRICE_TRIGGER_EASED", True)
 
 # R/R and divergence
 RR_MIN  = _env_float("MIN_RR", os.getenv("RR_MIN", "1.5"))
-DIV_MIN = _env_int("DIV_MIN", 1)  # bonus only now
+DIV_MIN = _env_int("DIV_MIN", 2)  # bonus only now
 
 # New: how many supporting gates must pass (sweet, volume, momentum)
 SUPPORT_MIN_PASS = _env_int("SUPPORT_MIN_PASS", 2)
@@ -124,7 +124,7 @@ DEBUG_DETAIL = _env_bool("DEBUG_DETAIL", False)
 DAILY_PERIOD="max"; DAILY_INTERVAL="1d"
 INTRA_PERIOD="90d"; INTRA_INTERVAL="60m"
 
-LB=5; RB=5
+LB=3; RB=3
 
 # ===================== NEW: LINEAR REGRESSION CHANNEL (LRC) ===================== #
 LRC_ENABLE         = _env_bool("LRC_ENABLE", True)
@@ -356,7 +356,7 @@ def divergence_v3(o: pd.DataFrame, lb=5, rb=5, min_count=2):
     names = []
     for name, s in indicators.items():
         try:
-            if price.iloc[i2] < price.iloc[i1] and s.iloc[i2] > s.iloc[i1]:
+            if price.iloc[i2] < price.iloc[i1]* 1.002 and s.iloc[i2] > s.iloc[i1]:
                 names.append(name)
         except Exception:
             pass
