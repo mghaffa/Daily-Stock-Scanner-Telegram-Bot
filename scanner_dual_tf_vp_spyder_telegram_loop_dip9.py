@@ -348,6 +348,17 @@ def divergence_score(df: pd.DataFrame, lb: int, rb: int):
             if bullish_div(price, s, lb, rb): names.append(k)
         except Exception: pass
     return len(names), names
+
+def momentum_reset(o: pd.DataFrame) -> bool:
+    rsi = o["RSI14"].iloc[-1]
+    willr = o["WILLR"].iloc[-1]
+
+    return (
+        35 <= rsi <= 50 and          # RSI cooled, not broken
+        willr <= -60                 # price pushed to lower range
+    )
+
+
 # ===================== MULTI-INDICATOR DIVERGENCE v3 =====================
 def divergence_v3(o: pd.DataFrame, lb=3, rb=3, min_count=2):
     indicators = {
@@ -918,27 +929,29 @@ def run_once(first_run: bool = False):
         # Tier 1: touch or very close
         div_tier1 = df_full[
             (
-                (df_full["lrc_touch_ok"] == True) |
+                df_full["lrc_touch_ok"] |
                 (dist_pct_full <= LRC_NEAR_PCT_STRICT)
             ) &
             (
-                (df_full["div_v3_cnt"] >= DIV_MIN) |   # strong divergence
+                (df_full["div_v3_cnt"] >= DIV_MIN) |   # TRUE divergence
                 (
-                    (df_full["div_v3_cnt"] >= 1) &     # weak divergence
-                    (df_full["lrc_touch_ok"] == True)  # ONLY if at LRC
+                    (df_full["reset_ok"] == True) &    # momentum reset
+                    (df_full["lrc_touch_ok"] == True)
                 )
             )
         ]
 
+
         # Tier 2: early divergence, not at LRC yet
-        div_tier2 = div_df[
-            (dist_pct > LRC_NEAR_PCT_STRICT) &
-            (dist_pct <= LRC_NEAR_PCT_EARLY)
+        div_tier2 = df_full[
+            (dist_pct_full > LRC_NEAR_PCT_STRICT) &
+            (dist_pct_full <= LRC_NEAR_PCT_EARLY) &
+            (
+                (df_full["div_v3_cnt"] >= DIV_MIN) |
+                (df_full["reset_ok"] == True)
+            )
         ]
-        # Tier 3: Trend pullback divergence (NOT near LRC)
-        # distance from LRC
-        dist_pct_full = (df_full["close"] - df_full["lrc_lower"]).abs() / df_full["lrc_lower"]
-        
+
         # Tier 3A: shallow pullback
         div_tier3a = df_full[
             (df_full["div_v3_cnt"] >= 1) &                 # ← KEY CHANGE
@@ -953,12 +966,12 @@ def run_once(first_run: bool = False):
         
         # Tier 3B: deep pullback
         div_tier3b = df_full[
-            (df_full["div_v3_cnt"] >= 1) &                 # ← KEY CHANGE
+            (df_full["reset_ok"] == True) &
             (df_full["ema50"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
-            (dist_pct_full >= 0.10) &
-            (df_full["lrc_touch_ok"] == False)
+            (dist_pct_full >= 0.10)
         ]
+
 
 
     else:
