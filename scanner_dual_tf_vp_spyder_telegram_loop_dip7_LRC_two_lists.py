@@ -579,6 +579,7 @@ class Row:
     lrc_slope: float | None = None
     lrc_touch_ok: bool | None = None
     lrc_touch_msg: str = ""
+    willr: float | None = None
 
     # gates / debug
     primary_ok: bool | None = None
@@ -709,6 +710,8 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
     reasons.append(f"supports_passed={support_pass}/{SUPPORT_MIN_PASS}")
 
     r = o.iloc[-1]
+    willr_val = round(float(r.WILLR), 1)
+
     return Row(
         ticker=ticker, tf=tf, date=str(r.name.date()), status=status,
         close=round(float(r.Close),2), sug_buy=sug_buy, sug_stop=sug_stop,
@@ -727,6 +730,7 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         lrc_slope=(None if not np.isfinite(lrc_slope) else round(float(lrc_slope),6)),
         lrc_touch_ok=bool(ok_lrc_touch),
         lrc_touch_msg=lrc_msg,
+        willr=willr_val,
         primary_ok=bool(primary_ok),
         strict_ok=bool(strict_ok),
         reasons=" | ".join(reasons), conf=conf, error="",
@@ -925,10 +929,14 @@ def run_once(first_run: bool = False):
                 sug_buy = rr.get("sug_buy","")
                 rrval = rr.get("rr","")
                 conf = rr.get("conf","")
+                willr = rr.get("willr","")
+
                 lines.append(
                     f"- {rr.get('ticker','')} [{rr.get('tf','')}] c {close} | "
-                    f"LRC_lo {lrc_lo} | sug_buy {sug_buy} | R/R {rrval} | conf {conf}"
+                    f"LRC_lo {lrc_lo} | W%R {willr} | "
+                    f"sug_buy {sug_buy} | R/R {rrval} | conf {conf}"
                 )
+
             return lines
 
         lrc_only_lines = _collect(lrc_only_df, LRC_TOUCH_REPORT_MAX)
