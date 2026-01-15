@@ -1032,6 +1032,21 @@ def run_once(first_run: bool = False):
                 f"LRC_lo {r['lrc_lower']} ({dist:.1%} away) | "
                 f"conf {r['conf']}"
             )
+    if not div_tier3b.empty:
+        if div_lines:
+            div_lines += [""]
+    
+        div_lines += [
+            "🟪 Trend Pullback (Tier 3B – Deep, Mean Reversion):",
+            "——————"
+        ]
+    
+        for _, r in div_tier3b.iterrows():
+            div_lines.append(
+                f"- {r['ticker']} [{r['tf']}] c {r['close']} | "
+                f"EMA50 {r['ema50']} | EMA200 {r['ema200']} | "
+                f"conf {r['conf']}"
+            )
 
     # ---------------- LRC touch reporting (two disjoint lists) ----------------
     lrc_only_df = pd.DataFrame()
