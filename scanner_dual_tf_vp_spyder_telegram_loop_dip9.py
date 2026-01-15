@@ -932,8 +932,8 @@ def run_once(first_run: bool = False):
         ema_gap = (df_full["ema50"] - df_full["close"]) / df_full["ema50"]
 
         # Tier 3A: shallow pullback
-        # div_tier3a = df_full[
-        #     (df_full["ema50"] > df_full["ema200"]) &
+        #div_tier3a = df_full[
+        #      (df_full["ema50"] > df_full["ema200"]) &
         #     (df_full["close"] > df_full["ema200"]) &
         #     (df_full["close"] < df_full["ema50"]) &
         #     (dist_pct_full >= 0.03) &
