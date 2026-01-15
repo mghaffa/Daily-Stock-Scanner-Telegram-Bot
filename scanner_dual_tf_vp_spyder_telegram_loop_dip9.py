@@ -931,22 +931,25 @@ def run_once(first_run: bool = False):
         
         # Tier 3A: shallow pullback
         div_tier3a = df_full[
+            (df_full["div_v3_cnt"] >= 1) &                 # ← KEY CHANGE
             (df_full["ema50"] > df_full["ema200"]) &
             (df_full["close"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
             (dist_pct_full >= 0.03) &
-            (dist_pct_full < 0.08) &
+            (dist_pct_full < 0.10) &
             (df_full["lrc_touch_ok"] == False)
         ]
+
         
         # Tier 3B: deep pullback
         div_tier3b = df_full[
-            (dist_pct_full >= 0.08) &
+            (df_full["div_v3_cnt"] >= 1) &                 # ← KEY CHANGE
             (df_full["ema50"] > df_full["ema200"]) &
-            (df_full["close"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
+            (dist_pct_full >= 0.10) &
             (df_full["lrc_touch_ok"] == False)
         ]
+
 
     else:
         div_tier1 = div_df.iloc[0:0]
