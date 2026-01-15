@@ -680,6 +680,7 @@ class Row:
     # gates / debug
     primary_ok: bool | None = None
     strict_ok: bool | None = None
+    reset_ok: bool | None = None
     trend_ok: bool | None = None
     liq_ok: bool | None = None
     vol_ok: bool | None = None
@@ -832,6 +833,7 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         lrc_touch_ok=bool(ok_lrc_touch),
         lrc_touch_msg=lrc_msg,
         willr=willr_val,
+        reset_ok = momentum_reset(o)
         primary_ok=bool(primary_ok),
         strict_ok=bool(strict_ok),
         reasons=" | ".join(reasons), conf=conf, error="",
