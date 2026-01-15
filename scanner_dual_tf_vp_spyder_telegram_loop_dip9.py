@@ -629,6 +629,10 @@ class Row:
     lvn_below: float | None = None
     poc: float | None = None
     div_cnt: int = 0
+    
+    # Divergence v3
+    div_v3_cnt: int = 0
+    div_v3_names: list | None = None
 
     # LRC fields
     lrc_mid: float | None = None
@@ -785,6 +789,8 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         lvn_below=(None if lvn_b is None else round(float(lvn_b),2)),
         poc=(None if poc is None else round(float(poc),2)),
         div_cnt=div_cnt,
+        div_v3_cnt=div_v3_cnt,
+        div_v3_names=div_v3_names,
         lrc_mid=(None if not np.isfinite(lrc_mid) else round(float(lrc_mid),2)),
         lrc_upper=(None if not np.isfinite(lrc_upper) else round(float(lrc_upper),2)),
         lrc_lower=(None if not np.isfinite(lrc_lower) else round(float(lrc_lower),2)),
