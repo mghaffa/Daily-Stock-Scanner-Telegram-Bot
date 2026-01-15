@@ -415,6 +415,19 @@ def lrc_touch_ok(o: pd.DataFrame) -> Tuple[bool, str, float, float, float, float
     msg = f"LRC touch {'OK' if touched else 'no'} (probe={probe:.2f} <= lower={lower:.2f}+tol={tol:.2f})"
     return bool(touched), msg, mid, upper, lower, slope
 
+
+def near_lrc_lower(o: pd.DataFrame, pct: float = 0.02) -> bool:
+    """
+    True if Close is within ±pct of the LRC lower band.
+    """
+    mid, upper, lower, slope, _ = linear_regression_channel(
+        o["Close"], LRC_LEN, LRC_DEVLEN
+    )
+    if not np.isfinite(lower):
+        return False
+    c = float(o["Close"].iloc[-1])
+    return abs(c - lower) / lower <= pct
+
 # ---------- Volume Profile ---------- #
 def volume_profile(close: pd.Series, volume: pd.Series, lookback=180, bins=120):
     close=_squeeze_col(close).tail(lookback); volume=_squeeze_col(volume).reindex(close.index)
@@ -869,10 +882,14 @@ def run_once(first_run: bool = False):
     else:
         print(div_df[["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]].to_string(index=False))
 
-    if "lrc_touch_ok" in div_df.columns:
-        div_lrc_hits = div_df[div_df["lrc_touch_ok"] == True]
+    if {"lrc_lower", "close"}.issubset(div_df.columns):
+        div_lrc_hits = div_df[
+            (div_df["lrc_touch_ok"] == True) |
+            ((div_df["close"] - div_df["lrc_lower"]).abs() / div_df["lrc_lower"] <= 0.02)
+        ]
     else:
         div_lrc_hits = div_df.iloc[0:0]
+
 
     if not div_lrc_hits.empty:
         print("\n🔥 Divergence v3 + LRC LOWER BAND 🔥")
