@@ -907,7 +907,7 @@ def run_once(first_run: bool = False):
     
     div_df = df_full[df_full["div_v3_cnt"] >= DIV_MIN].copy()
     
-    LRC_NEAR_PCT_STRICT = 0.02   # Tier 1: optimal
+    LRC_NEAR_PCT_STRICT = 0.04   # Tier 1: optimal
     LRC_NEAR_PCT_EARLY  = 0.08   # Tier 2: early / approaching
     
     if not div_df.empty and {"lrc_lower", "close"}.issubset(div_df.columns):
@@ -915,11 +915,20 @@ def run_once(first_run: bool = False):
         dist_pct = (div_df["close"] - div_df["lrc_lower"]).abs() / div_df["lrc_lower"]
     
         # Tier 1: touch or very close
-        div_tier1 = div_df[
-            (div_df["lrc_touch_ok"] == True) |
-            (dist_pct <= LRC_NEAR_PCT_STRICT)
+        div_tier1 = df_full[
+            (
+                (df_full["lrc_touch_ok"] == True) |
+                (dist_pct_full <= LRC_NEAR_PCT_STRICT)
+            ) &
+            (
+                (df_full["div_v3_cnt"] >= DIV_MIN) |   # strong divergence
+                (
+                    (df_full["div_v3_cnt"] >= 1) &     # weak divergence
+                    (df_full["lrc_touch_ok"] == True)  # ONLY if at LRC
+                )
+            )
         ]
-    
+
         # Tier 2: early divergence, not at LRC yet
         div_tier2 = div_df[
             (dist_pct > LRC_NEAR_PCT_STRICT) &
