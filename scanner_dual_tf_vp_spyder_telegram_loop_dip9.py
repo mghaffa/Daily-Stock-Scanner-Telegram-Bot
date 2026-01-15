@@ -932,28 +932,29 @@ def run_once(first_run: bool = False):
         ema_gap = (df_full["ema50"] - df_full["close"]) / df_full["ema50"]
 
         # Tier 3A: shallow pullback
-        #div_tier3a = df_full[
-        #      (df_full["ema50"] > df_full["ema200"]) &
-        #     (df_full["close"] > df_full["ema200"]) &
-        #     (df_full["close"] < df_full["ema50"]) &
-        #     (dist_pct_full >= 0.03) &
-        #     (dist_pct_full < 0.08) &
-        #     (df_full["lrc_touch_ok"] == False)
-        # ]
-       div_tier3a = df_full[
+        div_tier3a = df_full[
             (df_full["ema50"] > df_full["ema200"]) &
             (df_full["close"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
-        
-            # 🔑 REAL pullback (not EMA hug)
             (ema_gap >= 0.015) &
-        
-            # LRC distance (keep as-is)
             (dist_pct_full >= 0.03) &
             (dist_pct_full < 0.08) &
-        
             (df_full["lrc_touch_ok"] == False)
         ]
+        # div_tier3a = df_full[
+        #     (df_full["ema50"] > df_full["ema200"]) &
+        #     (df_full["close"] > df_full["ema200"]) &
+        #     (df_full["close"] < df_full["ema50"]) &
+        
+        #     # 🔑 REAL pullback (not EMA hug)
+        #     (ema_gap >= 0.015) &
+        
+        #     # LRC distance (keep as-is)
+        #     (dist_pct_full >= 0.03) &
+        #     (dist_pct_full < 0.08) &
+        
+        #     (df_full["lrc_touch_ok"] == False)
+        # ]
          
         
         # Tier 3B: deep pullback
