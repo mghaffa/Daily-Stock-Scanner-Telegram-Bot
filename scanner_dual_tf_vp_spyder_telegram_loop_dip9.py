@@ -428,6 +428,7 @@ def near_lrc_lower(o: pd.DataFrame, pct: float = 0.02) -> bool:
     c = float(o["Close"].iloc[-1])
     return abs(c - lower) / lower <= pct
 
+
 # ---------- Volume Profile ---------- #
 def volume_profile(close: pd.Series, volume: pd.Series, lookback=180, bins=120):
     close=_squeeze_col(close).tail(lookback); volume=_squeeze_col(volume).reindex(close.index)
@@ -707,6 +708,7 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
 
     # NEW: LRC touch gate
     ok_lrc_touch, lrc_msg, lrc_mid, lrc_upper, lrc_lower, lrc_slope = lrc_touch_ok(o)
+    near_lrc = near_lrc_lower(o, pct=0.02)
 
     sug_buy, sug_stop, poc, hvn_b, lvn_b, (inner_lo, inner_hi) = suggest_levels(o, vp_lookback, 120)
     ok_rr, rr_msg, stop, target, rr = risk_reward(o, hvn_b, lvn_b)
@@ -882,18 +884,22 @@ def run_once(first_run: bool = False):
     else:
         print(div_df[["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]].to_string(index=False))
 
-    if {"lrc_lower", "close"}.issubset(div_df.columns):
+    if {"lrc_touch_ok", "lrc_lower", "close"}.issubset(div_df.columns):
         div_lrc_hits = div_df[
             (div_df["lrc_touch_ok"] == True) |
             ((div_df["close"] - div_df["lrc_lower"]).abs() / div_df["lrc_lower"] <= 0.02)
         ]
     else:
         div_lrc_hits = div_df.iloc[0:0]
-
-
+    
     if not div_lrc_hits.empty:
-        print("\n🔥 Divergence v3 + LRC LOWER BAND 🔥")
-        print(div_lrc_hits[["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]].to_string(index=False))
+        print("\n🔥 Divergence v3 + LRC LOWER (touch or ±2%) 🔥")
+        print(
+            div_lrc_hits[
+                ["ticker","close","div_v3_cnt","div_v3_names","lrc_lower"]
+            ].to_string(index=False)
+        )
+
 
 
     # ---------------- LRC touch reporting (two disjoint lists) ----------------
