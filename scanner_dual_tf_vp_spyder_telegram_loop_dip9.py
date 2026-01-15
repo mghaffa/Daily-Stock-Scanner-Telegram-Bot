@@ -1000,6 +1000,21 @@ def run_once(first_run: bool = False):
                 f"conf {r['conf']}"
             )
 
+    if not div_tier3.empty:
+        if div_lines:
+            div_lines += [""]
+    
+        div_lines += [
+            "🟦 Trend Pullback (Tier 3 – Channel Support, no LRC):",
+            "——————"
+        ]
+    
+        for _, r in div_tier3.iterrows():
+            div_lines.append(
+                f"- {r['ticker']} [{r['tf']}] c {r['close']} | "
+                f"EMA50 {r['ema50']} | EMA200 {r['ema200']} | "
+                f"conf {r['conf']}"
+            )
 
     # ---------------- LRC touch reporting (two disjoint lists) ----------------
     lrc_only_df = pd.DataFrame()
