@@ -113,7 +113,7 @@ PRICE_TRIGGER_EASED = _env_bool("PRICE_TRIGGER_EASED", True)
 
 # R/R and divergence
 RR_MIN  = _env_float("MIN_RR", os.getenv("RR_MIN", "1.5"))
-DIV_MIN = _env_int("DIV_MIN", 2)  # bonus only now
+DIV_MIN = _env_int("DIV_MIN", 3.5)  # bonus only now
 
 # New: how many supporting gates must pass (sweet, volume, momentum)
 SUPPORT_MIN_PASS = _env_int("SUPPORT_MIN_PASS", 2)
