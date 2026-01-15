@@ -936,7 +936,7 @@ def run_once(first_run: bool = False):
             (df_full["ema50"] > df_full["ema200"]) &
             (df_full["close"] > df_full["ema200"]) &
             (df_full["close"] < df_full["ema50"]) &
-            (ema_gap >= 0.02) &
+            (ema_gap >= 0.025) &
             (dist_pct_full >= 0.03) &
             (dist_pct_full < 0.08) &
             (df_full["lrc_touch_ok"] == False)
