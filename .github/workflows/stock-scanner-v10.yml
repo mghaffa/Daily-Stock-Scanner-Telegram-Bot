@@ -1,0 +1,308 @@
+name: Stock Scanner V10 (Telegram)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # avoid overlap if a run lasts too long
+on:
+  # Poll every 5 min within a UTC window that covers both EDT and EST RTH.
+  # EDT RTH ≈ 13:30–20:00 UTC; EST RTH ≈ 14:30–21:00 UTC.
+  schedule:
+    - cron: "*/5 * * * 1-5"
+  workflow_dispatch:
+    inputs:
+      RUN_AFTER_HOURS:
+        type: boolean
+        description: "Allow running outside US market hours?"
+        default: false
+      ALWAYS_NOTIFY:
+        type: boolean
+        description: "Send a summary even if there are no NEW alerts?"
+        default: true
+      PING_ON_START:
+        type: boolean
+        description: "Send a startup ping?"
+        default: false
+      PING_ON_END:
+        type: boolean
+        description: "Send a completion ping?"
+        default: false
+      TICKERS:
+        type: string
+        description: "Optional override list (comma/space/semicolon/pipe separated)"
+        default: ""
+      PROFILE:
+        type: choice
+        description: "Preset"
+        options: [balanced (core), conservative (strict), aggressive (loose)]
+        default: balanced (core)
+      DEBUG_DETAIL:
+        type: choice
+        description: "Include per-ticker gate flags & bottlenecks in the output?"
+        options: [false, true]
+        default: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      TZ: America/New_York
+      CADENCE_MIN: '80'
+      TOLERANCE_MIN: '10'
+      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
+        && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
+        || (vars.RUN_AFTER_HOURS || 'false') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install pandas numpy yfinance requests certifi
+          fi
+      # ---- Market-hours guard + 45-min cadence anchored at 09:30 ET ----
+      # ---- Gate: US RTH + 45-min cadence anchored at 09:30 ET ----
+      - name: Gate cadence (sets output ok=yes|no)
+        id: gate
+        shell: bash
+        run: |
+          ok=yes
+          reason=""
+          dow=$(TZ=America/New_York date +%u)
+          hh=$(TZ=America/New_York date +%H)
+          mm=$(TZ=America/New_York date +%M)
+          mins=$((10#$hh*60 + 10#$mm))
+          open=$((9*60 + 30)) # 09:30
+          close=$((16*60)) # 16:00
+          cad=${CADENCE_MIN:-55}
+          tol=${TOLERANCE_MIN:-5}
+          run_after_hours="${{ inputs.RUN_AFTER_HOURS }}"
+          if [ "$run_after_hours" != "true" ]; then
+            if [ "$dow" -ge 6 ]; then
+              ok=no; reason="weekend"
+            elif [ $mins -lt $open ] || [ $mins -ge $close ]; then
+              ok=no; reason="outside RTH"
+            else
+              delta=$(( mins - open ))
+              rem=$(( ( (delta % cad) + cad ) % cad ))
+              if [ $rem -le $tol ] || [ $rem -ge $((cad - tol)) ]; then
+                ok=yes
+              else
+                ok=no; reason="off cadence (rem=$rem tol=$tol)"
+              fi
+            fi
+          fi
+          HM=$(TZ=America/New_York date +'%H:%M')
+          echo "now=$HM" >> "$GITHUB_OUTPUT"
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "Gate result: ok=$ok; $reason; NY time=$HM"
+      - name: Compute week key
+        run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
+      - name: Restore scanner cache
+        id: scancache
+        uses: actions/cache/restore@v4
+        with:
+          path: .scanner_cache
+          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
+          restore-keys: |
+            scanner-cache-${{ runner.os }}-
+      # ---- Build PRESET from PROFILE and merge ADVANCED_JSON, then export to env ----
+      - name: Expand PROFILE/ADVANCED_JSON → env
+        shell: bash
+        env:
+          # For scheduled runs there is no inputs.PROFILE; default it explicitly:
+          PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.PROFILE || 'balanced (core)' }}
+          #PROFILE: ${{ inputs.PROFILE }}
+          ADVANCED_JSON: ${{ inputs.ADVANCED_JSON }}
+          DEBUG_DETAIL: ${{ inputs.DEBUG_DETAIL }}
+        run: |
+          python - <<'PY'
+          import os, json, sys
+          profile = (os.environ.get("PROFILE","balanced (core)") or "balanced (core)").strip().lower()
+          presets = {
+            # Long-term core: quality + regime aware, still flexible on entries
+            "balanced (core)": {
+              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,
+              "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
+              "MIN_20D_DOLLAR_VOL": 10_000_000,
+              "VOL_UP_LOOKBACK": 10, 
+              "LRC_ENABLE": True,
+              "LRC_LEN": 100,
+              "LRC_DEVLEN": 2.0,
+              "LRC_TOUCH_USE_LOW": True,
+              "LRC_TOUCH_TOL_ATR": 0.10,
+              "LRC_TOUCH_REPORT": True,
+              "LRC_TOUCH_REPORT_DEDUP": True,
+              "LRC_TOUCH_REPORT_MAX": 25,
+              "VOL_UP_MULT": 1.28,                                        # real accumulation, not starved- original vale 1.2
+              "BUY_LOWER_BAND_ATR_MULT": 0.55,                             # slightly above 0.5 to force better stabilization - Original value 0.5
+              "BUY_UPPER_BAND_ATR_MULT": 0.22,                            # narrower than 0.25, not as late as 0.20- Original value 0.25
+              "SOFT_SWEET_PAD_ATR": 0.18,                                 # must hold near the sweet spot after cross Original value 0.25
+              "AVWAP_TOL_ATR": 0.12,                                      # tight AVWAP proximity to avoid weak reclaims - Original value 0.15
+              "MIN_RR": 1.7, "DIV_MIN": 2,                                # original values 1,5 and 2
+              "SUPPORT_MIN_PASS": 2,                                      # 2+ aligned supports (4H/D/W or pivots)
+              "PRICE_TRIGGER_EASED": False                                # no early/eased prints - Original value True
+            },
+        
+            # Most selective for multi-month holds: highest quality & strongest trend confirmation
+            "conservative (strict)": {
+              "ENABLE_4H": True, "ENFORCE_4H_ANCHORED_VWAP": True,            # keep ON to avoid knife-catches
+              "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,
+              "MIN_20D_DOLLAR_VOL": 15_000_000,
+              "VOL_UP_LOOKBACK": 12, 
+              "VOL_UP_MULT": 1.35,                                            # Original value  1.4 stricest
+              "LRC_ENABLE": True,
+              "LRC_LEN": 120,
+              "LRC_DEVLEN": 2.2,
+              "LRC_TOUCH_USE_LOW": True,
+              "LRC_TOUCH_TOL_ATR": 0.07,
+              "LRC_TOUCH_REPORT": True,
+              "LRC_TOUCH_REPORT_DEDUP": True,
+              "LRC_TOUCH_REPORT_MAX": 25,
+              "BUY_LOWER_BAND_ATR_MULT": 0.6, 
+              "BUY_UPPER_BAND_ATR_MULT": 0.2,                                 # Original value  0.3
+              "SOFT_SWEET_PAD_ATR": 0.15,                                     # Original value  0.1
+              "AVWAP_TOL_ATR": 0.10,                                          
+              "MIN_RR": 2.0, "DIV_MIN": 3,
+              "SUPPORT_MIN_PASS": 3,
+              "PRICE_TRIGGER_EASED": False
+            },
+        
+            # Still long-term oriented, but more inclusive; keeps regime/AVWAP checks on
+            "aggressive (loose)": {
+              "ENABLE_4H": True, 
+              "ENFORCE_4H_ANCHORED_VWAP": True,                                  # turned ON for long-term discipline and avoid knife-catches
+              "REGIME_SYMBOL": "SPY", "REGIME_DOWNGRADE_TO_WATCH": True,         # require regime for BUY
+              "MIN_20D_DOLLAR_VOL": 5_000_000,
+              "VOL_UP_LOOKBACK": 8,
+              "LRC_ENABLE": True,
+              "LRC_LEN": 80,
+              "LRC_DEVLEN": 1.8,
+              "LRC_TOUCH_USE_LOW": True,
+              "LRC_TOUCH_TOL_ATR": 0.12,
+              "LRC_TOUCH_REPORT": True,
+              "LRC_TOUCH_REPORT_DEDUP": True,
+              "LRC_TOUCH_REPORT_MAX": 25,
+              "VOL_UP_MULT": 1.17,                                                # require some accumulation - Original value 1.0
+              "BUY_LOWER_BAND_ATR_MULT": 0.5,                                    # Original value  0.45
+              "BUY_UPPER_BAND_ATR_MULT": 0.24,                                   # a hair wider than balanced, still disciplined - Original value 0.25 looser
+              "SOFT_SWEET_PAD_ATR": 0.20,                                        # must hold near sweet spot after cross - original value 0.40 -looseest
+              "AVWAP_TOL_ATR": 0.15,                                             # slightly looser proximity than balanced - original value 0.3  looser     
+              "MIN_RR": 1.6, "DIV_MIN": 1,                                       # Original values 1.3 and 1
+              "SUPPORT_MIN_PASS": 2,                                             # was 1; lift to reduce weak setups for long-term. # don’t drop this below 2
+              "PRICE_TRIGGER_EASED": True                                        # ⬅ earlier fires allowed, with guards above
+            }
+          }
+          cfg = dict(presets.get(profile, presets["balanced (core)"]))
+          raw = (os.environ.get("ADVANCED_JSON","") or "").strip()
+          if raw:
+            try:
+              user = json.loads(raw)
+              if not isinstance(user, dict): raise ValueError("must be a JSON object")
+              cfg.update(user)
+            except Exception as e:
+              print("Invalid ADVANCED_JSON:", e)
+              sys.exit(1)
+          mapping = {
+            "ENABLE_4H": "IDE_ENABLE_4H",
+            "ENFORCE_4H_ANCHORED_VWAP": "ENFORCE_4H_ANCHORED_VWAP",
+            "REGIME_SYMBOL": "REGIME_SYMBOL",
+            "REGIME_DOWNGRADE_TO_WATCH": "REGIME_DOWNGRADE_TO_WATCH",
+            "MIN_20D_DOLLAR_VOL": "MIN_20D_DOLLAR_VOL",
+            "VOL_UP_LOOKBACK": "VOL_UP_LOOKBACK","LRC_ENABLE": "LRC_ENABLE",
+            "LRC_LEN": "LRC_LEN",
+            "LRC_DEVLEN": "LRC_DEVLEN",
+            "LRC_TOUCH_USE_LOW": "LRC_TOUCH_USE_LOW",
+            "LRC_TOUCH_TOL_ATR": "LRC_TOUCH_TOL_ATR",
+            "LRC_TOUCH_REPORT": "LRC_TOUCH_REPORT",
+            "LRC_TOUCH_REPORT_DEDUP": "LRC_TOUCH_REPORT_DEDUP",
+            "LRC_TOUCH_REPORT_MAX": "LRC_TOUCH_REPORT_MAX",
+            "VOL_UP_MULT": "VOL_UP_MULT",
+            "BUY_LOWER_BAND_ATR_MULT": "BUY_LOWER_BAND_ATR_MULT",
+            "BUY_UPPER_BAND_ATR_MULT": "BUY_UPPER_BAND_ATR_MULT",
+            "SOFT_SWEET_PAD_ATR": "SOFT_SWEET_PAD_ATR",
+            "AVWAP_TOL_ATR": "AVWAP_TOL_ATR",
+            "MIN_RR": "MIN_RR",
+            "DIV_MIN": "DIV_MIN",
+            "SUPPORT_MIN_PASS": "SUPPORT_MIN_PASS",
+            "PRICE_TRIGGER_EASED": "PRICE_TRIGGER_EASED",
+          }
+          def as_bool(v): return "true" if str(v).lower() in ("1","true","yes","on","y") else "false"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+            for k, dst in mapping.items():
+              if k in cfg:
+                v = cfg[k]
+                if isinstance(v, bool):
+                  v = as_bool(v)
+                f.write(f"{dst}={v}\n")
+            f.write(f"DEBUG_DETAIL={(os.environ.get('DEBUG_DETAIL','false').lower())}\n")
+            f.write(f"PROFILE_EFFECTIVE={profile}\n")
+            mode_map = {
+              "balanced (core)": "Balanced",
+              "conservative (strict)": "Conservative",
+              "aggressive (loose)": "Aggressive"
+            }
+            mode = mode_map.get(profile, "Balanced")
+            f.write(f"NOTIFY_PREFIX=[ Enhanced Version v10_ {mode} Mode ] \n")
+            # Instruct the Python to always honor PROFILE_EFFECTIVE for banner
+            f.write("FORCE_PREFIX_FROM_PROFILE=true\n")
+          
+          print("Effective profile:", profile)
+          print("Effective config:", json.dumps(cfg, separators=(',',':')))
+          PY
+      - name: Run scanner
+        if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+    
+          MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
+    
+          # Manual runs: respect the UI toggle; Scheduled runs: ALWAYS true
+          ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
+            && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
+            || 'true' }}
+    
+          TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
+          TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
+    
+          TICKERS: ${{ inputs.TICKERS }}
+          CACHE_DIR: .scanner_cache
+    
+          # NEW: add a visible prefix to every message from this workflow
+          #NOTIFY_PREFIX: "[Enhanced Version v10] "
+          #NOTIFY_PREFIX: ${{ format('[ Enhanced Version v10_ {0} Mode ] ', inputs.PROFILE == 'balanced (core)' && 'Balanced' || inputs.PROFILE == 'conservative (strict)' && 'Conservative' || 'Aggressive') }}
+          # Use the canonical, profile-derived banner:
+          NOTIFY_PREFIX: ${{ env.NOTIFY_PREFIX }}
+          PROFILE_EFFECTIVE: ${{ env.PROFILE_EFFECTIVE }}
+          FORCE_PREFIX_FROM_PROFILE: 'true'
+
+        run: |
+          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip10.py
+      - name: Upload CSV + state as artifact
+        if: (steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch') || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-output
+          path: |
+            scanner_dual_tf_vp_dip10.csv
+            .scanner_cache/alerts_dip10_seen.json
+      - name: Save scanner cache
+        if: ((steps.gate.outputs.ok == 'yes') || (github.event_name == 'workflow_dispatch')) && steps.scancache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .scanner_cache
+          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
