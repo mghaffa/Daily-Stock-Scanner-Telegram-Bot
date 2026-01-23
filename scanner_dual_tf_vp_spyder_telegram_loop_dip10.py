@@ -64,6 +64,9 @@ import pandas as pd
 import yfinance as yf
 import requests
 import urllib3
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="yfinance")
+warnings.filterwarnings("ignore", category=FutureWarning, module="yfinance")  # If you see FutureWarning variants
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ===================== USER TOGGLES (env-driven) ===================== #
@@ -125,7 +128,7 @@ if FORCE_PREFIX_FROM_PROFILE or not NOTIFY_PREFIX:
 # Universe
 RAW_TICKERS = ["AAPL","AAPU","ABT","AMD","AMZN","AMZU","ARQQ","ASTS","ASTX","AVGO","AVGU","BULZ","BYND","CCJ","COST","COTG","CRM","CRWD","DDOG","DELL","DOGD","GLD","GLDM","GOOGL","HIMS",
     "HOLO","IBM","INTC","IONQ","JPM","KLAC","LAES","META","MSCI","MSFT","MU","MUU","NET","NFLX","NFXL","NOW","NOWL","NTRA","NVDA","OKLL","OKLO","ORCL","ORCX","PLTR","PLTU","QBTS",
-    "QTUM","QUBT","RACE","REGTI","RKLB","RKLX","SCHD","SCHX","SHOP","SHNY","SMCI","SOFI","SOFI","TEM","TQQQ","TSLA","TSLL","TSM","UNH","UPST","UVXY","VOO"]
+    "QTUM","QUBT","RACE","RGTI","RKLB","RKLX","SCHD","SCHX","SHOP","SHNY","SMCI","SOFI","SOFI","TEM","TQQQ","TSLA","TSLL","TSM","UNH","UPST","UVXY","VOO"]
 
 ALIAS = {"google":"GOOGL"}
 
@@ -884,10 +887,20 @@ def process_one(ticker: str, tf: str, df: pd.DataFrame, vp_lookback=180) -> Row:
         fail_secondary=(", ".join([n for n in support_names if not flags.get(n, False)]) or "")
     )
 
+def is_valid_ticker(ticker: str) -> bool:
+    try:
+        info = yf.Ticker(ticker).info
+        return bool(info and 'regularMarketPrice' in info)  # Or check 'symbol'
+    except Exception:
+        return False
+
 def build_dataframe() -> pd.DataFrame:
     rows: List[Row] = []
     tickers = _parse_universe()
     for t in tickers:
+        if not is_valid_ticker(t):
+            rows.append(Row(ticker=t, tf="1D", error=f"Invalid/delisted ticker: {t}"))
+            continue
         try:
             ddf = fetch_daily(t)
             rows.append(process_one(t, "1D", ddf, 180))
@@ -896,7 +909,7 @@ def build_dataframe() -> pd.DataFrame:
     df = pd.DataFrame([r.__dict__ for r in rows])
     df["tf"] = pd.Categorical(df["tf"], categories=["1D"], ordered=True)
     return df.sort_values(["tf","ticker"]).reset_index(drop=True)
-
+    
 # -------- de-dup state for alerts -------- #
 CACHE_DIR = os.getenv("CACHE_DIR", ".scanner_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
