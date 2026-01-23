@@ -123,9 +123,10 @@ if FORCE_PREFIX_FROM_PROFILE or not NOTIFY_PREFIX:
     NOTIFY_PREFIX = _computed_prefix_from_profile(PROFILE_EFFECTIVE)
 
 # Universe
-RAW_TICKERS = ["aapl","aapu","abt","amd","amzn","amzu","arqq","asts","astx","avgo","avgu","bulz","bynd","ccj","cost","cotg","crm","crwd","ddog","dell","dogd","gld","gldm","googl","hims",
-               "holo","ibm","intc","ionq","jpm","klac","laes","meta","msci","msft","mu","muu","net","nflx","nfxl","now","nowl","ntra","nvda","okll","oklo","orcl","orcx","pltr","pltu","qbts",
-               "qtum","qubt","race","regti","rklb","rklx","schd","schx","shop","shny","sofi","sofi","tem","tqqq","tsla","tsll","tsm","unh","upst","uvxy","voo"]
+RAW_TICKERS = ["AAPL","AAPU","ABT","AMD","AMZN","AMZU","ARQQ","ASTS","ASTX","AVGO","AVGU","BULZ","BYND","CCJ","COST","COTG","CRM","CRWD","DDOG","DELL","DOGD","GLD","GLDM","GOOGL","HIMS",
+    "HOLO","IBM","INTC","IONQ","JPM","KLAC","LAES","META","MSCI","MSFT","MU","MUU","NET","NFLX","NFXL","NOW","NOWL","NTRA","NVDA","OKLL","OKLO","ORCL","ORCX","PLTR","PLTU","QBTS",
+    "QTUM","QUBT","RACE","REGTI","RKLB","RKLX","SCHD","SCHX","SHOP","SHNY","SMCI","SOFI","SOFI","TEM","TQQQ","TSLA","TSLL","TSM","UNH","UPST","UVXY","VOO"]
+
 ALIAS = {"google":"GOOGL"}
 
 # --- Preset-driven risk/filters ---
