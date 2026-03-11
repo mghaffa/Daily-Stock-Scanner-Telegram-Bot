@@ -6,21 +6,7 @@ concurrency:
 
 on:
   schedule:
-    # 06:35 New York (EDT=10:35 UTC / EST=11:35 UTC)
-    - cron: "35 10 * * 1-5"
-    - cron: "35 11 * * 1-5"
-
-    # 09:30 NY
-    - cron: "30 13 * * 1-5"
-    - cron: "30 14 * * 1-5"
-
-    # 11:30 NY
-    - cron: "30 15 * * 1-5"
-    - cron: "30 16 * * 1-5"
-
-    # 14:30 NY
-    - cron: "30 18 * * 1-5"
-    - cron: "30 19 * * 1-5"
+    - cron: "*/5 * * * 1-5"
 
   workflow_dispatch:
     inputs:
@@ -100,19 +86,30 @@ jobs:
             pip install pandas numpy yfinance requests certifi
           fi
 
-      # Weekend guard only
-      - name: Weekend gate
+
+      - name: Time gate (allow only 4 runs)
         id: gate
         run: |
           dow=$(TZ=America/New_York date +%u)
-
+          HM=$(TZ=America/New_York date +%H:%M)
+      
           if [ "$dow" -ge 6 ]; then
-            echo "ok=no" >> "$GITHUB_OUTPUT"
-            echo "Weekend — skipping"
-          else
-            echo "ok=yes" >> "$GITHUB_OUTPUT"
+            echo "ok=no" >> $GITHUB_OUTPUT
+            echo "Weekend"
+            exit 0
           fi
-
+      
+          case "$HM" in
+            06:35|09:30|11:30|14:30)
+              echo "ok=yes" >> $GITHUB_OUTPUT
+              echo "Allowed time $HM"
+              ;;
+            *)
+              echo "ok=no" >> $GITHUB_OUTPUT
+              echo "Skipping $HM"
+              ;;
+          esac
+    
       - name: Compute week key
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
 
