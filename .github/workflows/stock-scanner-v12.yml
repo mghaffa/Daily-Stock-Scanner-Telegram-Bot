@@ -162,6 +162,3 @@ jobs:
         with:
           path: .scanner_cache
           key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
-real case time that works so far for today NY Time:
-10:30,11:13,12:16,13:28,
-please check and find why this time is not match with what we want?
