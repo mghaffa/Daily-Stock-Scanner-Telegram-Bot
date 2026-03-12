@@ -1,0 +1,167 @@
+name: Stock Scanner V12 (Telegram)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+on:
+  schedule:
+    # 06:35 New York (EDT=10:35 UTC / EST=11:35 UTC)
+    - cron: "35 10 * * 1-5"
+    - cron: "35 11 * * 1-5"
+    # 09:30 NY
+    - cron: "30 13 * * 1-5"
+    - cron: "30 14 * * 1-5"
+    # 11:30 NY
+    - cron: "30 15 * * 1-5"
+    - cron: "30 16 * * 1-5"
+    # 14:30 NY
+    - cron: "30 18 * * 1-5"
+    - cron: "30 19 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      RUN_AFTER_HOURS:
+        type: boolean
+        description: "Allow running outside US market hours?"
+        default: false
+      ALWAYS_NOTIFY:
+        type: boolean
+        description: "Send summary even if no alerts?"
+        default: true
+      PING_ON_START:
+        type: boolean
+        description: "Send startup ping?"
+        default: false
+      PING_ON_END:
+        type: boolean
+        description: "Send completion ping?"
+        default: false
+      TICKERS:
+        type: string
+        description: "Optional ticker override list"
+        default: ""
+      PROFILE:
+        type: choice
+        description: "Scanner preset"
+        options:
+          - balanced (core)
+          - conservative (strict)
+          - aggressive (loose)
+        default: balanced (core)
+      DEBUG_DETAIL:
+        type: choice
+        options: [false, true]
+        default: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      TZ: America/New_York
+      RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
+        && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
+        || (vars.RUN_AFTER_HOURS || 'false') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install pandas numpy yfinance requests certifi
+          fi
+      # Weekend guard only
+      - name: Weekend gate
+        id: gate
+        run: |
+          dow=$(TZ=America/New_York date +%u)
+          if [ "$dow" -ge 6 ]; then
+            echo "ok=no" >> "$GITHUB_OUTPUT"
+            echo "Weekend — skipping"
+          else
+            echo "ok=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Debug current NY time + which cron fired
+        run: |
+          echo "Current NY time: $(TZ=America/New_York date '+%Y-%m-%d %H:%M:%S (%Z)')"
+          echo "Hour: $(TZ=America/New_York date +%H)"
+          echo "Minute: $(TZ=America/New_York date +%M)"
+
+      - name: Compute week key
+        run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
+      - name: Restore scanner cache
+        id: scancache
+        uses: actions/cache/restore@v4
+        with:
+          path: .scanner_cache
+          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
+          restore-keys: |
+            scanner-cache-${{ runner.os }}-
+      - name: Expand PROFILE → environment
+        shell: bash
+        env:
+          PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.PROFILE || 'balanced (core)' }}
+          DEBUG_DETAIL: ${{ inputs.DEBUG_DETAIL }}
+        run: |
+          python - <<'PY'
+          import os
+          profile = (os.environ.get("PROFILE") or "balanced (core)").lower()
+          mode_map = {
+            "balanced (core)": "Balanced",
+            "conservative (strict)": "Conservative",
+            "aggressive (loose)": "Aggressive"
+          }
+          mode = mode_map.get(profile,"Balanced")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"PROFILE_EFFECTIVE={profile}\n")
+              f.write(f"NOTIFY_PREFIX=[ Enhanced Version v10 {mode} Mode ]\n")
+              f.write(f"DEBUG_DETAIL={os.environ.get('DEBUG_DETAIL','false')}\n")
+              f.write("FORCE_PREFIX_FROM_PROFILE=true\n")
+          print("Profile:",profile)
+          PY
+      - name: Run scanner
+        if: steps.gate.outputs.ok == 'yes' || github.event_name == 'workflow_dispatch'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          MARKET_ONLY: ${{ inputs.RUN_AFTER_HOURS && 'false' || 'true' }}
+          ALWAYS_NOTIFY: ${{ github.event_name == 'workflow_dispatch'
+            && (inputs.ALWAYS_NOTIFY && 'true' || 'false')
+            || 'true' }}
+          TELEGRAM_PING_ON_START: ${{ inputs.PING_ON_START && 'true' || 'false' }}
+          TELEGRAM_PING_ON_END: ${{ inputs.PING_ON_END && 'true' || 'false' }}
+          TICKERS: ${{ inputs.TICKERS }}
+          CACHE_DIR: .scanner_cache
+          NOTIFY_PREFIX: ${{ env.NOTIFY_PREFIX }}
+          PROFILE_EFFECTIVE: ${{ env.PROFILE_EFFECTIVE }}
+          FORCE_PREFIX_FROM_PROFILE: "true"
+        run: |
+          PYTHONUNBUFFERED=1 python scanner_dual_tf_vp_spyder_telegram_loop_dip10.py
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-output
+          path: |
+            scanner_dual_tf_vp_dip10.csv
+            .scanner_cache/alerts_dip10_seen.json
+      - name: Save scanner cache
+        if: steps.scancache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .scanner_cache
+          key: scanner-cache-${{ runner.os }}-${{ env.WEEK_KEY }}
+real case time that works so far for today NY Time:
+10:30,11:13,12:16,13:28,
+please check and find why this time is not match with what we want?
