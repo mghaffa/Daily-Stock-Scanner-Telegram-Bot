@@ -1,3 +1,4 @@
+Stock Scanner V12 (Telegram)
 name: Stock Scanner V12 (Telegram)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
