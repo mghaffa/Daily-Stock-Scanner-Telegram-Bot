@@ -100,8 +100,6 @@ jobs:
           H=$(TZ=America/New_York date +%H)
           M=$(TZ=America/New_York date +%M)
       
-          NOW=$((10#$H * 60 + 10#$M))
-          RUN_KEY=$(TZ=America/New_York date +%Y%m%d-%H-%M)
           echo "RUN_KEY=$RUN_KEY" >> $GITHUB_ENV
           in_window () {
             local start=$1
