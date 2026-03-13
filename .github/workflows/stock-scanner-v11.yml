@@ -107,10 +107,10 @@ jobs:
     
           echo "Current NY time: $H:$M"
           echo "Minute index: $NOW"
-          if { [ $NOW -ge 390 ] && [ $NOW -le 400 ]; } || \
-             { [ $NOW -ge 565 ] && [ $NOW -le 575 ]; } || \
-             { [ $NOW -ge 685 ] && [ $NOW -le 695 ]; } || \
-             { [ $NOW -ge 865 ] && [ $NOW -le 875 ]; }
+          if { [ $NOW -ge 572 ] && [ $NOW -le 578 ]; } || \
+             { [ $NOW -ge 687 ] && [ $NOW -le 693 ]; } || \
+             { [ $NOW -ge 807 ] && [ $NOW -le 813 ]; } || \
+             { [ $NOW -ge 942 ] && [ $NOW -le 948 ]; }
           then
             echo "ok=yes" >> $GITHUB_OUTPUT
             echo "Allowed window"
