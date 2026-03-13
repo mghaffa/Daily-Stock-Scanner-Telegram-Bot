@@ -121,10 +121,10 @@ jobs:
           }
       
           if \
-            in_window 390 400 || \
-            in_window 565 575 || \
+            in_window 570 580 || \
             in_window 685 695 || \
-            in_window 865 875
+            in_window 805 815 || \
+            in_window 940 950
           then
             echo "ok=yes" >> "$GITHUB_OUTPUT"
             echo "✅ MATCHED desired time: $H:$M NY → proceeding"
