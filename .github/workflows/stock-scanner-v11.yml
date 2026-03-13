@@ -99,6 +99,12 @@ jobs:
       
           H=$(TZ=America/New_York date +%H)
           M=$(TZ=America/New_York date +%M)
+
+          H=$((10#$H))
+          M=$((10#$M))
+
+          NOW=$((H*60 + M))
+    
           echo "Current NY time: $H:$M"
           echo "Minute index: $NOW"
           if { [ $NOW -ge 390 ] && [ $NOW -le 400 ]; } || \
