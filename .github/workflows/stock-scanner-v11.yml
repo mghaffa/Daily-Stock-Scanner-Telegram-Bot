@@ -56,6 +56,7 @@ jobs:
 
     env:
       TZ: America/New_York
+      WORKFLOW_VERSION: V11
       RUN_AFTER_HOURS: ${{ github.event_name == 'workflow_dispatch'
         && (inputs.RUN_AFTER_HOURS && 'true' || 'false')
         || (vars.RUN_AFTER_HOURS || 'false') }}
