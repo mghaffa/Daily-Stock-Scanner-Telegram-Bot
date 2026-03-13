@@ -86,12 +86,10 @@ jobs:
             pip install pandas numpy yfinance requests certifi
           fi
 
-
-      - name: Time gate (allow only 4 runs)
+      - name: Time gate (stable window)
         id: gate
         run: |
           dow=$(TZ=America/New_York date +%u)
-          HM=$(TZ=America/New_York date +%H:%M)
       
           if [ "$dow" -ge 6 ]; then
             echo "ok=no" >> $GITHUB_OUTPUT
@@ -99,17 +97,31 @@ jobs:
             exit 0
           fi
       
-          case "$HM" in
-            06:35|09:30|11:30|14:30)
-              echo "ok=yes" >> $GITHUB_OUTPUT
-              echo "Allowed time $HM"
-              ;;
-            *)
-              echo "ok=no" >> $GITHUB_OUTPUT
-              echo "Skipping $HM"
-              ;;
-          esac
-    
+          H=$(TZ=America/New_York date +%H)
+          M=$(TZ=America/New_York date +%M)
+      
+          NOW=$((10#$H * 60 + 10#$M))
+      
+          in_window () {
+            local start=$1
+            local end=$2
+            [ "$NOW" -ge "$start" ] && [ "$NOW" -le "$end" ]
+          }
+      
+          if \
+            in_window 390 400 || \
+            in_window 565 575 || \
+            in_window 685 695 || \
+            in_window 865 875
+          then
+            echo "ok=yes" >> $GITHUB_OUTPUT
+            echo "Allowed window"
+          else
+            echo "ok=no" >> $GITHUB_OUTPUT
+            echo "Skipping time $H:$M"
+          fi
+
+          
       - name: Compute week key
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
 
