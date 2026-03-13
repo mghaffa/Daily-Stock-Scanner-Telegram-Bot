@@ -6,19 +6,7 @@ concurrency:
 
 on:
   schedule:
-    # === 4 DESIRED TIMES IN NY (EDT/EST handled automatically by gate below) ===
-    # 06:35 New York (EDT=10:35 UTC / EST=11:35 UTC)
-    - cron: "35 13 * * 1-5"
-    - cron: "35 14 * * 1-5"
-    # 09:30 NY
-    - cron: "30 16 * * 1-5"
-    - cron: "30 17 * * 1-5"
-    # 11:30 NY
-    - cron: "30 17 * * 1-5"
-    - cron: "30 18 * * 1-5"
-    # 14:30 NY
-    - cron: "30 21 * * 1-5"
-    - cron: "30 22 * * 1-5"
+      - cron: "*/5 10-21 * * 1-5"
 
   workflow_dispatch:
     inputs:
@@ -124,8 +112,20 @@ jobs:
         id: timegate
         run: |
           H=$(TZ=America/New_York date +%H)
-          M=$(TZ=America/New_York date +%M)
-          if [[ "$H:$M" =~ ^(06:3[5-9]|09:3[0-9]|11:3[0-9]|14:3[0-9])$ ]]; then
+          M=$(TZ=America/New_York date +%M)    
+          NOW=$((10#$H * 60 + 10#$M))
+          in_window () {
+            local start=$1
+            local end=$2
+            [ "$NOW" -ge "$start" ] && [ "$NOW" -le "$end" ]
+          }
+      
+          if \
+            in_window 390 400 || \
+            in_window 565 575 || \
+            in_window 685 695 || \
+            in_window 865 875
+          then
             echo "ok=yes" >> "$GITHUB_OUTPUT"
             echo "✅ MATCHED desired time: $H:$M NY → proceeding"
           else
