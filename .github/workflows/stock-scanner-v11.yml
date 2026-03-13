@@ -99,19 +99,12 @@ jobs:
       
           H=$(TZ=America/New_York date +%H)
           M=$(TZ=America/New_York date +%M)
-      
-          echo "RUN_KEY=$RUN_KEY" >> $GITHUB_ENV
-          in_window () {
-            local start=$1
-            local end=$2
-            [ "$NOW" -ge "$start" ] && [ "$NOW" -le "$end" ]
-          }
-      
-          if \
-            in_window 390 400 || \
-            in_window 565 575 || \
-            in_window 685 695 || \
-            in_window 865 875
+          echo "Current NY time: $H:$M"
+          echo "Minute index: $NOW"
+          if { [ $NOW -ge 390 ] && [ $NOW -le 400 ]; } || \
+             { [ $NOW -ge 565 ] && [ $NOW -le 575 ]; } || \
+             { [ $NOW -ge 685 ] && [ $NOW -le 695 ]; } || \
+             { [ $NOW -ge 865 ] && [ $NOW -le 875 ]; }
           then
             echo "ok=yes" >> $GITHUB_OUTPUT
             echo "Allowed window"
