@@ -113,19 +113,23 @@ jobs:
         id: timegate
         run: |
           H=$(TZ=America/New_York date +%H)
-          M=$(TZ=America/New_York date +%M)    
+          M=$(TZ=America/New_York date +%M)
+      
           NOW=$((10#$H * 60 + 10#$M))
+      
           in_window () {
-            local start=$1
-            local end=$2
+            local center=$1
+            local range=7
+            local start=$((center-range))
+            local end=$((center+range))
             [ "$NOW" -ge "$start" ] && [ "$NOW" -le "$end" ]
           }
       
           if \
-            in_window 570 580 || \
-            in_window 685 695 || \
-            in_window 805 815 || \
-            in_window 940 950
+            in_window 395 || \
+            in_window 570 || \
+            in_window 690 || \
+            in_window 870
           then
             echo "ok=yes" >> "$GITHUB_OUTPUT"
             echo "✅ MATCHED desired time: $H:$M NY → proceeding"
