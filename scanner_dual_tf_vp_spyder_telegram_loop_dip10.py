@@ -64,10 +64,14 @@ import pandas as pd
 import yfinance as yf
 import requests
 import urllib3
+import os
 import warnings
+CODE_VERSION = "V10"
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="yfinance")
 warnings.filterwarnings("ignore", category=FutureWarning, module="yfinance")  # If you see FutureWarning variants
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+CODE_VERSION = "V10"
 
 # ===================== USER TOGGLES (env-driven) ===================== #
 def _env_bool(name, default):
@@ -119,8 +123,13 @@ def _computed_prefix_from_profile(profile: str) -> str:
         "conservative (strict)": "Conservative",
         "aggressive (loose)": "Aggressive",
     }
+
     mode = mode_map.get((profile or "balanced (core)").lower(), "Balanced")
-    return f"[ Enhanced Version V10_ {mode} Mode ] "
+
+    yaml_version = os.getenv("WORKFLOW_VERSION", "V?")
+    code_version = CODE_VERSION
+
+    return f"[ YAML {yaml_version} | CODE {code_version} | {mode} ] "
 
 if FORCE_PREFIX_FROM_PROFILE or not NOTIFY_PREFIX:
     NOTIFY_PREFIX = _computed_prefix_from_profile(PROFILE_EFFECTIVE)
