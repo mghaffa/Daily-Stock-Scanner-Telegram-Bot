@@ -158,19 +158,27 @@ jobs:
         run: |
           python - <<'PY'
           import os
+      
           profile = (os.environ.get("PROFILE") or "balanced (core)").lower()
+          version = os.environ.get("WORKFLOW_VERSION","V?")
+      
           mode_map = {
             "balanced (core)": "Balanced",
             "conservative (strict)": "Conservative",
             "aggressive (loose)": "Aggressive"
           }
+      
           mode = mode_map.get(profile,"Balanced")
+      
+          prefix = f"[ Scanner {version} | {mode} Mode ]"
+      
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write(f"PROFILE_EFFECTIVE={profile}\n")
-              f.write(f"NOTIFY_PREFIX=[ Enhanced Version v10 {mode} Mode ]\n")
+              f.write(f"NOTIFY_PREFIX={prefix}\n")
               f.write(f"DEBUG_DETAIL={os.environ.get('DEBUG_DETAIL','false')}\n")
               f.write("FORCE_PREFIX_FROM_PROFILE=true\n")
-          print("Profile:",profile)
+      
+          print("Prefix:", prefix)
           PY
 
       - name: Run scanner
