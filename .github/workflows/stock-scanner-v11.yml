@@ -100,18 +100,28 @@ jobs:
       
           H=$(TZ=America/New_York date +%H)
           M=$(TZ=America/New_York date +%M)
-
+      
           H=$((10#$H))
           M=$((10#$M))
-
+      
           NOW=$((H*60 + M))
-    
+      
           echo "Current NY time: $H:$M"
           echo "Minute index: $NOW"
-          if { [ $NOW -ge 572 ] && [ $NOW -le 578 ]; } || \
-             { [ $NOW -ge 687 ] && [ $NOW -le 693 ]; } || \
-             { [ $NOW -ge 807 ] && [ $NOW -le 813 ]; } || \
-             { [ $NOW -ge 942 ] && [ $NOW -le 948 ]; }
+      
+          in_window () {
+            center=$1
+            range=7
+            start=$((center-range))
+            end=$((center+range))
+            [ $NOW -ge $start ] && [ $NOW -le $end ]
+          }
+      
+          if \
+            in_window 570 || \
+            in_window 690 || \
+            in_window 810 || \
+            in_window 945
           then
             echo "ok=yes" >> $GITHUB_OUTPUT
             echo "Allowed window"
@@ -119,8 +129,7 @@ jobs:
             echo "ok=no" >> $GITHUB_OUTPUT
             echo "Skipping time $H:$M"
           fi
-
-          
+         
       - name: Compute week key
         run: echo "WEEK_KEY=$(TZ=America/New_York date +%G-%V)" >> $GITHUB_ENV
 
