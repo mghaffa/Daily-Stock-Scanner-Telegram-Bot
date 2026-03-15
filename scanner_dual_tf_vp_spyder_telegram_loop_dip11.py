@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-scanner_dual_tf_vp_spyder_telegram_loop_dip10.py
+scanner_dual_tf_vp_spyder_telegram_loop_dip11.py
 
 Adds:
 - Linear Regression Channel (LRC) on 1D (regression + residual stdev band)
@@ -66,7 +66,7 @@ import requests
 import urllib3
 import warnings
 
-CODE_VERSION = "V10"
+CODE_VERSION = "V11"
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="yfinance")
 warnings.filterwarnings("ignore", category=FutureWarning, module="yfinance")
